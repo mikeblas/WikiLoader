@@ -11,20 +11,23 @@ namespace WikiReader
 {
     class LargestString
     {
-        String _str;
+        String _current;
+        String _largest;
         String _name;
 
-        LargestString(String name)
+        public LargestString(String name)
         {
             _name = name;
         }
 
         public void test(String str)
         {
-            if (_str == null || str.Length > _str.Length)
-            {
-                _str = str;
-            }
+        }
+
+        public void Reset()
+        {
+            _current = null;
+            _largest = null;
         }
 
         public String Name
@@ -32,9 +35,22 @@ namespace WikiReader
             get { return _name; }
         }
 
+        public String Current
+        {
+            get { return _current; }
+            set
+            {
+                if (_largest == null || value.Length > _largest.Length)
+                {
+                    _largest = value;
+                }
+                _current = value;
+            }
+        }
+
         public String Largest
         {
-            get { return _str; }
+            get { return _largest; }
         }
     }
 
@@ -179,59 +195,19 @@ namespace WikiReader
             {
                 revisions.Values[n].text = null;
             }
-
         }
     }
-
-    /// <summary>
-    /// Represense a namespace.
-    /// 
-    /// Includes the name and Id of the namespace. Also manages a count
-    /// which is used to tally the number of articles read per namespace.
-    /// </summary>
-    class NamespaceInfo
-    {
-        int _pageCount;
-        Int64 _namespaceId;
-        String _name;
-        /// <summary>
-        /// Create a new namespace instance.
-        /// pageCount is initalized to one.
-        /// 
-        /// </summary>
-        /// <param name="name">Name of this namespace</param>
-        /// <param name="namespaceId">ID for this namespace</param>
-        public NamespaceInfo(String name, Int64 namespaceId)
-        {
-            _name = name;
-            _pageCount = 1;
-            _namespaceId = namespaceId;
-        }
-
-        public String Name
-        {
-            get { return _name; }
-        }
-
-        public int PageCount
-        {
-            get { return _pageCount; }
-        }
-
-        public void IncrementCount()
-        {
-            _pageCount += 1;
-        }
-    }
-
 
     class Program
     {
         String _fileName;
+        DatabasePump _pump;
 
         Program(String fileName)
         {
             _fileName = fileName;
+            _pump = new DatabasePump();
+            _pump.TestConnection();
         }
 
         static void Main(string[] args)
@@ -254,14 +230,14 @@ namespace WikiReader
             Int64 revisionId = 0;
             Int64 contributorId = 0;
             Int64 parentRevisionId = 0;
-            String contributorIp = null;
+            LargestString contributorIp = new LargestString("contributorIp");
             int namespaceId = 0;
             int pageId = 0;
             Boolean inRevision = false;
             Boolean inContributor = false;
             DateTime timestamp = DateTime.MinValue;
-            String comment = null;
-            String articleText = null;
+            LargestString comment = new LargestString("Comment");
+            LargestString articleText = new LargestString("ArticleText");
             String contributorUserName = null;
             int revisionCount = 0;
             int minorRevisionCount = 0;
@@ -279,7 +255,7 @@ namespace WikiReader
             Dictionary<String, Page> pageMap = new Dictionary<String, Page>();
 
             // dictionary from namespace ID to namespace string
-            Dictionary<int, NamespaceInfo> namespaceMap = new Dictionary<int, NamespaceInfo>();
+            NamespaceInfos namespaceMap = new NamespaceInfos();
 
             while (reader.Read())
             {
@@ -321,7 +297,7 @@ namespace WikiReader
 
                         case "ip":
                             reader.Read();
-                            contributorIp = reader.Value;
+                            contributorIp.Current = reader.Value;
                             anonymousRevisions += 1;
                             break;
 
@@ -360,12 +336,12 @@ namespace WikiReader
 
                         case "text":
                             reader.Read();
-                            articleText = reader.Value;
+                            articleText.Current = reader.Value;
                             break;
 
                         case "comment":
                             reader.Read();
-                            comment = reader.Value;
+                            comment.Current = reader.Value;
                             break;
                     }
                 }
@@ -384,8 +360,12 @@ namespace WikiReader
 
                             namespaceMap[namespaceId].IncrementCount();
 
-                            pageMap[pageName].CloseRevisions();
+                            // grab a copy of the page
+                            // clean it up and push it to the pump
+                            Page page = pageMap[pageName];
+                            page.CloseRevisions();
                             pageMap.Remove(pageName);
+                            // _pump.Enqueue(page);
                             System.Console.WriteLine("Removed {0}", pageName);
                             break;
 
@@ -399,14 +379,14 @@ namespace WikiReader
 
                             User contributor = null;
                             if (contributorId == 0)
-                                contributor = new User(0, contributorIp);
+                                contributor = new User(0, contributorIp.Current);
                             else
                             {
                                 if (contributorUserName != null)
                                     contributor = new User(contributorId, contributorUserName);
                             }
                             
-                            PageRevision rev = new PageRevision(parentRevisionId, revisionId, timestamp, contributor, comment, articleText, sawMinor);
+                            PageRevision rev = new PageRevision(parentRevisionId, revisionId, timestamp, contributor, comment.Current, articleText.Current, sawMinor);
                             if (pageMap.ContainsKey(pageName))
                             {
                                 pageMap[pageName].AddRevision(rev);
@@ -421,7 +401,7 @@ namespace WikiReader
                             inRevision = false;
                             sawMinor = false;
                             contributorUserName = null;
-                            contributorIp = null;
+                            contributorIp.Reset();;
                             contributorId = 0;
                             break;
 
@@ -444,6 +424,7 @@ namespace WikiReader
 
                         case "namespaces":
                             System.Console.WriteLine("Read {0} namespaces", namespaceMap.Count );
+                            _pump.Enqueue(namespaceMap);
                             break;
                     }
                 }
@@ -453,6 +434,9 @@ namespace WikiReader
             System.Console.WriteLine("{0} total revisions", totalRevisions);
             System.Console.WriteLine("{0} total minor revisions", totalMinorRevisions);
             System.Console.WriteLine("{0} distinct contributors", contributorMap.Count);
+
+            System.Console.WriteLine("Longest comment is {0}: {1}", comment.Largest.Length, comment.Largest);
+            System.Console.WriteLine("Longest text is {0}", articleText.Largest.Length );
 
             foreach (NamespaceInfo ns in namespaceMap.Values)
             {

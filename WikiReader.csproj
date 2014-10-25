@@ -41,6 +41,10 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="NamespaceInfos.cs" />
+    <Compile Include="DatabasePump.cs" />
+    <Compile Include="Insertable.cs" />
+    <Compile Include="NamespaceInfo.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
