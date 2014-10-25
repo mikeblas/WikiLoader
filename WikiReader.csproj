@@ -45,6 +45,8 @@
     <Compile Include="DatabasePump.cs" />
     <Compile Include="Insertable.cs" />
     <Compile Include="NamespaceInfo.cs" />
+    <Compile Include="Page.cs" />
+    <Compile Include="PageRevision.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
