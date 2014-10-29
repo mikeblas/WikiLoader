@@ -167,11 +167,11 @@ namespace WikiReader
                     // deleted contributor
                     cmd.Parameters.AddWithValue("@ContributorID", DBNull.Value);
                     cmd.Parameters.AddWithValue("@IPAddress", DBNull.Value);
-                    cmd.Parameters.Add("@UserDeleted", true);
+                    cmd.Parameters.AddWithValue("@UserDeleted", true);
                 }
                 else
                 {
-                    cmd.Parameters.Add("@UserDeleted", false);
+                    cmd.Parameters.AddWithValue("@UserDeleted", false);
                     if (pr.Contributor.IsAnonymous)
                     {
                         cmd.Parameters.AddWithValue("@ContributorID", DBNull.Value);

@@ -31,6 +31,11 @@ namespace WikiReader
             _namespaceId = namespaceId;
         }
 
+        public Int64 ID
+        {
+            get { return _namespaceId; }
+        }
+
         public String Name
         {
             get { return _name; }

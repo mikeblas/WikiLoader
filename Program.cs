@@ -83,7 +83,7 @@ namespace WikiReader
                             reader.Read();
                             String namespaceName = reader.Value;
                             // Console.WriteLine("{0}: {1}", key, namespaceName);
-                            namespaceMap.Add( key, new NamespaceInfo( namespaceName, key ) );
+                            namespaceMap.Add( new NamespaceInfo( namespaceName, key ) );
                             break;
 
                         case "parentid":
