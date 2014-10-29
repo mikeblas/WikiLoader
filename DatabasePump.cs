@@ -128,7 +128,7 @@ namespace WikiReader
         {
             while (_running > 0)
             {
-                System.Console.WriteLine("{0} still running\n", _running);
+                System.Console.WriteLine("{0} still running", _running);
                 Thread.Sleep(1000);
             }
             return;

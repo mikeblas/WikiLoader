@@ -113,5 +113,15 @@ namespace WikiReader
             // show our results
             System.Console.WriteLine("Inserted {0} new namespaces; {1} already known", inserts, already);
         }
+
+        String Insertable.ObjectName
+        {
+            get { return "Namespaces Inserter"; }
+        }
+
+        int Insertable.RevisionCount
+        {
+            get { return 0; }
+        }
     }
 }

@@ -7,5 +7,15 @@ namespace WikiReader
     interface Insertable
     {
         void Insert(SqlConnection conn);
+
+        String ObjectName
+        {
+            get;
+        }
+
+        int RevisionCount
+        {
+            get;
+        }
     }
 }

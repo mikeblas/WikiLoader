@@ -245,6 +245,16 @@ namespace WikiReader
                 }
             }
         }
+
+        String Insertable.ObjectName
+        {
+            get { return "Page Inserter (" + _pageName + ")"; }
+        }
+
+        int Insertable.RevisionCount
+        {
+            get { return revisions.Count; }
+        }
     }
 
 }
