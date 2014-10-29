@@ -6,7 +6,6 @@ CREATE TABLE [User]
 	UserName NVARCHAR(80) COLLATE SQL_Latin1_General_CP1_CS_AS NOT NULL,
 );
 
-
 -- SQL_Latin1_General_CP1_CI_AS
 -- SQL_Latin1_General_CP1_CS_AS
 

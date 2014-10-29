@@ -8,6 +8,7 @@ select * from [User]
 
 select * from PageRevision
 
+SET STATISTICS IO ON;
 -- number of users, pages, revisions
 select count(*) AS CountUsers from [user];
 SELECT COUNT(*) AS CountRevisions FROM PageRevision;
@@ -15,10 +16,13 @@ SELECT COUNT(*) AS CountPages FROM Page;
 
 
 -- number of revisions per page
-select PageID, Count(PageRevisionID)
+SELECT Total.PageID, PageName, PageRevisionCount
+ FROM 
+( SELECT PageID, Count(PageRevisionID) AS PageRevisionCount
   FROM PageRevision
-  GROUP BY PageID
-  ORDER BY 2 DESC;
+  GROUP BY PageID) AS Total
+JOIN Page ON Page.PageID = Total.PageID
+  ORDER BY 3 DESC;
 
 
 -- Find PageRevisions that don't correspond to

@@ -79,8 +79,17 @@ namespace WikiReader
         public void Enqueue(Insertable i)
         {
             // get a new connection
-            SqlConnection conn = new SqlConnection(ConnectionString);
-            conn.Open();
+            SqlConnection conn = new SqlConnection(ConnectionString + "Application Name= " + i.ObjectName + ";");
+
+            try
+            {
+                conn.Open();
+            }
+            catch (Exception x)
+            {
+                System.Console.WriteLine(x);
+                throw x;
+            }
 
             // create a CallerInfo instance with the Insertable and our connection
             CallerInfo ci = new CallerInfo(conn, i);
