@@ -9,73 +9,6 @@ using System.IO;
 
 namespace WikiReader
 {
-    class LargestString
-    {
-        String _current;
-        String _largest;
-        String _name;
-
-        public LargestString(String name)
-        {
-            _name = name;
-        }
-
-        public void test(String str)
-        {
-        }
-
-        public void Reset()
-        {
-            _current = null;
-            _largest = null;
-        }
-
-        public String Name
-        {
-            get { return _name; }
-        }
-
-        public String Current
-        {
-            get { return _current; }
-            set
-            {
-                if (_largest == null || value.Length > _largest.Length)
-                {
-                    _largest = value;
-                }
-                _current = value;
-            }
-        }
-
-        public String Largest
-        {
-            get { return _largest; }
-        }
-    }
-
-    /// <summary>
-    /// Represents a user; contains their name (as a string) and an ID integer.
-    /// </summary>
-    class User
-    {
-        String _userName = null;
-        Int64 _userId = 0;
-
-        /// <summary>
-        /// Create a User object
-        /// </summary>
-        /// <param name="userId">user ID integer</param>
-        /// <param name="userName">user name as a string</param>
-        public User( Int64 userId, String userName )
-        {
-            _userId = userId;
-            _userName = userName;
-        }
-    }
-
-
-
     class Program
     {
         String _fileName;
@@ -161,11 +94,15 @@ namespace WikiReader
                         case "id":
                             reader.Read();
                             if (inContributor)
+                            {
                                 contributorId = Int64.Parse(reader.Value);
+                            }
                             else if (inRevision)
                                 revisionId = Int32.Parse(reader.Value);
-                            else 
+                            else
+                            {
                                 pageId = Int32.Parse(reader.Value);
+                            }
                             break;
 
                         case "username":
@@ -207,19 +144,47 @@ namespace WikiReader
                             }
                             else
                             {
+                                String str = reader.GetAttribute("deleted");
                                 contributorUserName = null;
-                                System.Console.WriteLine("Empty element!");
+                                // System.Console.WriteLine("Empty element! RevisionID = {1}, Attribute = {0}", str, revisionId);
                             }
                             break;
 
                         case "text":
-                            reader.Read();
-                            articleText.Current = reader.Value;
+                            // "text" may be an empty element;
+                            // if so, we're not inside it (and won't have contributor name or ID)
+                            if (!reader.IsEmptyElement)
+                            {
+                                reader.Read();
+                                articleText.Current = reader.Value;
+                            }
+                            else
+                            {
+                                if (null != reader.GetAttribute("deleted"))
+                                {
+                                    // System.Console.WriteLine("Deleted text! RevisionID = {0}", revisionId);
+                                    articleText.Current = null;
+                                }
+                                else
+                                {
+                                    articleText.Current = "";
+                                }
+                            }
                             break;
 
                         case "comment":
-                            reader.Read();
-                            comment.Current = reader.Value;
+                            // "comment" may be an empty element;
+                            // if so, we're not inside it (and won't have contributor name or ID)
+                            if (!reader.IsEmptyElement)
+                            {
+                                reader.Read();
+                                comment.Current = reader.Value;
+                            }
+                            else
+                            {
+                                // System.Console.WriteLine("Deleted comment! RevisionID = {0}",  revisionId);
+                                comment.Current = null;
+                            }
                             break;
                     }
                 }
@@ -243,7 +208,7 @@ namespace WikiReader
                             Page page = pageMap[pageName];
                             page.CloseRevisions();
                             pageMap.Remove(pageName);
-                            // _pump.Enqueue(page);
+                            _pump.Enqueue(page);
                             System.Console.WriteLine("Removed {0}", pageName);
                             break;
 
@@ -256,8 +221,19 @@ namespace WikiReader
                                 minorRevisionCount += 1;
 
                             User contributor = null;
-                            if (contributorId == 0)
-                                contributor = new User(0, contributorIp.Current);
+                            if (contributorId == 0 && contributorUserName == null)
+                            {
+                                if (contributorIp.Current == null)
+                                {
+                                    // deletd contribution; contributor remains null
+                                    // for the PageRevision constructor
+                                }
+                                else
+                                {
+                                    // anonymous edit
+                                    contributor = new User(contributorIp.Current);
+                                }
+                            }
                             else
                             {
                                 if (contributorUserName != null)
@@ -320,6 +296,9 @@ namespace WikiReader
             {
                 System.Console.WriteLine("{0},{1}", ns.PageCount, ns.Name);
             }
+
+            reader.Close();
+            _pump.WaitForComplete();
         }
     }
 }

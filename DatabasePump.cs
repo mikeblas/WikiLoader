@@ -26,7 +26,7 @@ namespace WikiReader
 
         String ConnectionString
         {
-            get { return "Integrated Security=SSPI;Persist Security Info=False;Initial Catalog=Wikipedia;Data Source=burst"; }
+            get { return "Integrated Security=SSPI;Persist Security Info=False;Initial Catalog=Wikipedia;Data Source=burst;Pooling=false;"; }
         }
 
         public DatabasePump()
@@ -46,14 +46,29 @@ namespace WikiReader
             conn.Open();
             CallerInfo ci = new CallerInfo(conn, i);
             ThreadPool.QueueUserWorkItem(new WaitCallback(caller), ci);
-            // conn.Close();
+            System.Console.WriteLine("{0} running", _running);
         }
+
+        private static int _running = 0;
 
         private static void caller(Object obj)
         {
             CallerInfo ci = (CallerInfo)obj;
+            Interlocked.Increment( ref _running );
             ci._i.Insert(ci._conn);
             ci._conn.Close();
+            ci._conn.Dispose();
+            Interlocked.Decrement( ref _running );
+        }
+
+        public void WaitForComplete()
+        {
+            while (_running > 0)
+            {
+                System.Console.WriteLine("{0} still running\n", _running);
+                Thread.Sleep(1000);
+            }
+            return;
         }
     }
 }

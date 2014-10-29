@@ -13,6 +13,7 @@ namespace WikiReader
     {
         String _userName = null;
         Int64 _userId = 0;
+        String _ipAddress = null;
 
         /// <summary>
         /// Create a User object
@@ -23,6 +24,35 @@ namespace WikiReader
         {
             _userId = userId;
             _userName = userName;
+        }
+
+        /// <summary>
+        /// Create an anonymous user object, identified only by the IP address
+        /// </summary>
+        /// <param name="ipAddress">IP address, as a string, where the edit was logged</param>
+        public User(String ipAddress)
+        {
+            _ipAddress = ipAddress;
+        }
+
+        public bool IsAnonymous
+        {
+            get { return (_userId == 0) && (_userName == null); }
+        }
+
+        public Int64 ID
+        {
+            get { return _userId; }
+        }
+
+        public String Name
+        {
+            get { return _userName; }
+        }
+
+        public String IPAddress
+        {
+            get { return _ipAddress; }
         }
     }
 }

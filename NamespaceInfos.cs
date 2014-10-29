@@ -37,9 +37,10 @@ namespace WikiReader
         {
             int inserts = 0;
             int already = 0;
+            SqlCommand cmd = new SqlCommand("INSERT INTO Namespace (NamespaceID, NamespaceName) VALUES ( @ID, @Name );", conn);
             foreach (KeyValuePair<int, NamespaceInfo> kvp in _namespaceMap)
             {
-                SqlCommand cmd = new SqlCommand("INSERT INTO Namespace (NamespaceID, NamespaceName) VALUES ( @ID, @Name );", conn );
+                cmd.Parameters.Clear();
                 cmd.Parameters.AddWithValue("@ID", kvp.Key);
                 cmd.Parameters.AddWithValue("@Name", kvp.Value.Name);
 

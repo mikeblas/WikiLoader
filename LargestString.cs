@@ -37,9 +37,12 @@ namespace WikiReader
             get { return _current; }
             set
             {
-                if (_largest == null || value.Length > _largest.Length)
+                if (value != null)
                 {
-                    _largest = value;
+                    if (_largest == null || value.Length > _largest.Length)
+                    {
+                        _largest = value;
+                    }
                 }
                 _current = value;
             }

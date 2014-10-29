@@ -33,7 +33,16 @@ namespace WikiReader
             _contributor = contributor;
             _comment = comment;
             _text = text;
-            _textLength = _text.Length;
+            if (null == _text)
+            {
+                _textLength = 0;
+                _textDeleted = true;
+            }
+            else
+            {
+                _textLength = _text.Length;
+                _textDeleted = false;
+            }
             _minor = minor;
         }
 
@@ -47,7 +56,7 @@ namespace WikiReader
             get { return _parentRevisionId; }
         }
 
-        public User contributor
+        public User Contributor
         {
             get { return _contributor; }
         }
@@ -57,13 +66,23 @@ namespace WikiReader
             get { return _timestamp; }
         }
 
-        public String comment
+        public String Comment
         {
             get { return _comment; }
-            set { _comment = comment; }
+            set { _comment = value; }
         }
 
-        public String text
+        public bool CommentDeleted
+        {
+            get { return _commentDeleted; }
+        }
+
+        public bool TextDeleted
+        {
+            get { return _textDeleted; }
+        }
+
+        public String Text
         {
             get { return _text; }
             set
@@ -72,6 +91,17 @@ namespace WikiReader
                 if (value != null) _textLength = _text.Length;
             }
         }
+
+        public int TextLength
+        {
+            get { return _textLength; }
+        }
+
+        public bool IsMinor
+        {
+            get { return _minor; }
+        }
+ 
     }
 
 }
