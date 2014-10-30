@@ -1,8 +1,10 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Text;
+using System.Data;
 using System.Data.Sql;
 using System.Data.SqlClient;
+using System.Threading;
 
 namespace WikiReader
 {
@@ -13,12 +15,34 @@ namespace WikiReader
     /// </summary>
     class Page : Insertable
     {
+        /// <summary>
+        /// Name of the page we represent
+        /// </summary>
         String _pageName = null;
-        int _namespaceId = 0;
-        Int64 _pageId = 0;
-        static HashSet<Int64> _insertedSet = new HashSet<Int64>();
 
+        /// <summary>
+        /// Namespace which holds that page
+        /// </summary>
+        int _namespaceId = 0;
+
+        /// <summary>
+        ///  ID number of this page
+        /// </summary>
+        Int64 _pageId = 0;
+
+        /// <summary>
+        /// set indicating which users we've already inserted
+        /// </summary>
+        static HashSet<Int64> _insertedUserSet = new HashSet<Int64>();
+
+        /// <summary>
+        /// Map of revisions from RevisionID to the PageRevision at that ID
+        /// </summary>
         SortedList<Int64, PageRevision> revisions = new SortedList<Int64, PageRevision>();
+
+        private int _usersAdded = 0;
+        private int _revsAdded = 0;
+        private int _revsAlready = 0;
 
         /// <summary>
         /// Create a new Page instance
@@ -66,78 +90,49 @@ namespace WikiReader
         public void Insert(System.Data.SqlClient.SqlConnection conn)
         {
             // first, insert all the users
-            InsertUsers(conn);
+            BulkInsertUsers(conn);
 
             // then, insert the revisions themselves
             InsertRevisions(conn);
 
             // finally, insert the page itself
             InsertPage(conn);
+
+            System.Console.WriteLine("{0}\n   {1} revisions added, {2} revisions exist", _pageName, _revsAdded, _revsAlready);
+            System.Console.WriteLine("   {0} users added", _usersAdded);
         }
 
-        private void InsertUsers( SqlConnection conn)
+        private void BulkInsertUsers(SqlConnection conn)
         {
-            int usersAdded = 0;
-            int usersAlready = 0;
-            Int64 lastUserID = -1;
-            SqlCommand cmd = new SqlCommand("INSERT INTO [User] (UserID, UserName) VALUES (@ID, @Name);", conn);
-            foreach (PageRevision pr in revisions.Values)
-            {
-                lock (_insertedSet)
-                {
-                    if (lastUserID != -1)
-                    {
-                        _insertedSet.Add(lastUserID);
-                    }
-                    lastUserID = -1;
-                    // if the contributor was deleted, skip it
-                    if (null == pr.Contributor)
-                        continue;
+            // build a unique temporary table name
+            String tempTableName = String.Format("#Users_{0}_{1}", System.Environment.MachineName, Thread.CurrentThread.ManagedThreadId);
 
-                    // if we're not anonymous and we've already seen this ID, then skip
-                    if (false == pr.Contributor.IsAnonymous && _insertedSet.Contains(pr.Contributor.ID))
-                        continue;
-                }
+            // create that temporary table
+            SqlCommand tableCreate = new SqlCommand(
+                "CREATE TABLE [" + tempTableName + "] (" +
+                "	UserID BIGINT NOT NULL," +
+                "	UserName NVARCHAR(80) COLLATE SQL_Latin1_General_CP1_CS_AS NOT NULL );", conn);
+            tableCreate.ExecuteNonQuery();
 
-                // if we're not anonymous, insert this user
-                if (false == pr.Contributor.IsAnonymous)
-                {
-                    cmd.Parameters.Clear();
-                    cmd.Parameters.AddWithValue("@ID", pr.Contributor.ID);
-                    cmd.Parameters.AddWithValue("@Name", pr.Contributor.Name);
+            // bulk insert into the temporary table
+            UserDataReader udr = new UserDataReader(_insertedUserSet, revisions.Values);
+            SqlBulkCopy sbc = new SqlBulkCopy(conn);
+            sbc.DestinationTableName = tempTableName;
+            sbc.ColumnMappings.Add(new SqlBulkCopyColumnMapping("UserID", "UserID"));
+            sbc.ColumnMappings.Add(new SqlBulkCopyColumnMapping("UserName", "UserName"));
+            sbc.WriteToServer(udr);
 
-                    try
-                    {
-                        cmd.ExecuteNonQuery();
-                        usersAdded += 1;
-                        lastUserID = pr.Contributor.ID;
-                    }
-                    catch (SqlException sex)
-                    {
-                        if (sex.Number == 2601)
-                        {
-                            usersAlready += 1;
-                            lastUserID = pr.Contributor.ID;
-                        }
-                        else
-                        {
-                            throw sex;
-                        }
-                    }
-                }
-            }
+            // merge up
+            SqlCommand tableMerge = new SqlCommand(
+                "MERGE INTO [User] " +
+                "USING [" + tempTableName + "] AS SRC ON [User].UserID = SRC.UserID " +
+                "WHEN NOT MATCHED THEN " +
+                " INSERT (UserID, UserName) VALUES (SRC.UserID, SRC.UserName);", conn);
+            _usersAdded = tableMerge.ExecuteNonQuery();
 
-            // now that we're done looping, we might have a lastUserID left over
-            // if so, mark it in our inserted set
-            if (lastUserID != -1)
-            {
-                lock (_insertedSet)
-                {
-                    _insertedSet.Add(lastUserID);
-                }
-            }
+            SqlCommand tableDrop = new SqlCommand("DROP TABLE [" + tempTableName + "];", conn);
+            tableDrop.ExecuteNonQuery();
 
-            System.Console.WriteLine("{2}: {0} users added, {1} already there", usersAdded, usersAlready, _pageName);
         }
 
         private void InsertRevisions(SqlConnection conn)
@@ -145,8 +140,6 @@ namespace WikiReader
             if (_pageId == 600)
                 System.Console.WriteLine("This one!");
 
-            int revsAdded = 0;
-            int revsAlready = 0;
             SqlCommand cmd = new SqlCommand(
                 "INSERT INTO [PageRevision] (NamespaceID, PageID, PageRevisionID, ParentPageRevisionID, RevisionWhen, ContributorID, " +
                 "   Comment, ArticleText, IsMinor, ArticleTextLength, UserDeleted, TextDeleted, IPAddress) " +
@@ -208,13 +201,13 @@ namespace WikiReader
                 try
                 {
                     cmd.ExecuteNonQuery();
-                    revsAdded += 1;
+                    _revsAdded += 1;
                 }
                 catch (SqlException sex)
                 {
                     if (sex.Number == 2601)
                     {
-                        revsAlready += 1;
+                        _revsAlready += 1;
                     }
                     else
                     {
@@ -222,8 +215,6 @@ namespace WikiReader
                     }
                 }
             }
-
-            System.Console.WriteLine("{0}: {1} revisions added, {2} revisions exist", _pageName, revsAdded, revsAlready);
         }
 
         private void InsertPage(SqlConnection conn)
