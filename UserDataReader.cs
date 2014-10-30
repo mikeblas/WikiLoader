@@ -50,7 +50,6 @@ namespace WikiReader
 
         void IDataReader.Close()
         {
-            throw new NotImplementedException();
         }
 
         int IDataReader.Depth

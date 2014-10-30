@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Data;
 using System.Data.Sql;
 using System.Data.SqlClient;
 using System.Collections.Concurrent;
@@ -79,16 +80,34 @@ namespace WikiReader
         public void Enqueue(Insertable i)
         {
             // get a new connection
-            SqlConnection conn = new SqlConnection(ConnectionString + "Application Name= " + i.ObjectName + ";");
+            SqlConnection conn = new SqlConnection(ConnectionString + "Application Name=" + i.ObjectName + ";");
 
-            try
+            for (int retries = 10; retries > 0; retries--)
             {
-                conn.Open();
+                try
+                {
+                    conn.Open();
+                    break;
+                }
+                catch (SqlException sex)
+                {
+                    // connection exception?
+                    if (sex.Number == 64 && sex.Source == ".Net SqlClient Data Provider")
+                    {
+                        System.Console.WriteLine("{0}: {1}, {2}\nTrying again ({3} retries left)",
+                            sex.Source, sex.Number, sex.Message, retries);
+                        Thread.Sleep(1000);
+                        continue;
+                    }
+
+                    // don't know that exception yet, just rethrow
+                    throw sex;
+                }
             }
-            catch (Exception x)
+
+            if (conn.State != ConnectionState.Open)
             {
-                System.Console.WriteLine(x);
-                throw x;
+                throw new Exception("Couldn't connect");
             }
 
             // create a CallerInfo instance with the Insertable and our connection

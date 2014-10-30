@@ -23,8 +23,8 @@ namespace WikiReader
 
         static void Main(string[] args)
         {
-            // String fileName = @"C:\Junk\enwiki-latest-pages-meta-history1.xml-p000000010p000002933";
-            String fileName = @"F:\Junk\enwiki-latest-pages-meta-history2.xml-p000010001p000012804";
+            String fileName = @"C:\Junk\enwiki-latest-pages-meta-history1.xml-p000000010p000002933";
+            // String fileName = @"F:\Junk\enwiki-latest-pages-meta-history2.xml-p000010001p000012804";
             if (args.Length >= 1)
                 fileName = args[0];
 

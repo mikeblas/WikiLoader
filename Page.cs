@@ -5,6 +5,7 @@ using System.Data;
 using System.Data.Sql;
 using System.Data.SqlClient;
 using System.Threading;
+using System.Diagnostics;
 
 namespace WikiReader
 {
@@ -70,7 +71,6 @@ namespace WikiReader
                     revisions[pr.revisionId].timestamp, revisions[pr.revisionId].revisionId, revisions[pr.revisionId].parentRevisionId);
                 System.Console.WriteLine("    new: {0} with id {1}, parent id {2}",
                     pr.timestamp, pr.revisionId, pr.parentRevisionId);
-
             }
             revisions.Add(pr.revisionId, pr);
             if (revisions.Count % 100 == 0)
@@ -120,7 +120,9 @@ namespace WikiReader
             sbc.DestinationTableName = tempTableName;
             sbc.ColumnMappings.Add(new SqlBulkCopyColumnMapping("UserID", "UserID"));
             sbc.ColumnMappings.Add(new SqlBulkCopyColumnMapping("UserName", "UserName"));
+            Trace.Assert(conn.State == ConnectionState.Open);
             sbc.WriteToServer(udr);
+            Trace.Assert(conn.State == ConnectionState.Open);
 
             // merge up
             SqlCommand tableMerge = new SqlCommand(
