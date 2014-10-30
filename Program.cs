@@ -209,7 +209,7 @@ namespace WikiReader
                             page.CloseRevisions();
                             pageMap.Remove(pageName);
                             _pump.Enqueue(page);
-                            System.Console.WriteLine("Removed {0}", pageName);
+                            System.Console.WriteLine("Queued {0}", pageName);
                             break;
 
                         case "revision":
