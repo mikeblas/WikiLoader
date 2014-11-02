@@ -1,4 +1,6 @@
 
+use Wikipedia;
+SET STATISTICS IO ON;
 
 -- all the namespaces
 select * from Namespace;
@@ -8,7 +10,7 @@ select * from [User]
 
 select * from PageRevision
 
-SET STATISTICS IO ON;
+
 -- number of users, pages, revisions
 select count(*) AS CountUsers from [user];
 SELECT COUNT(*) AS CountRevisions FROM PageRevision;
@@ -43,11 +45,24 @@ SELECT Namespace.NamespaceID, NamespaceName, COUNT(Namespace.NamespaceID)
 GROUP BY Namespace.NamespaceID, NamespaceName
 ORDER BY 3 DESC;
 
--- Contributions by contributor
-SELECT ContributorID, COUNT(1) AS Contributions
-  FROM PageRevision
-GROUP BY ContributorID
-ORDER BY 2 DESC;
+-- Contributions by non-anonymous contributor
+SELECT TOP 1000 UserID, UserName, Contributions
+FROM
+(
+	  SELECT ContributorID, COUNT(ContributorID) AS Contributions
+		FROM PageRevision
+	   WHERE ContributorID IS NOT NULL
+	GROUP BY ContributorID
+) AS Tally
+JOIN [User] AS U on U.UserID = Tally.ContributorID
+ORDER BY 3 DESC;
+
+-- Contributions by anonymous contributors
+   SELECT IPAddress, COUNT(IPAddress) AS Contributions
+	 FROM PageRevision
+    WHERE ContributorID IS NULL
+ GROUP BY IPAddress
+ ORDER BY 2 DESC;
 
 
 select * from PageRevision WHERE ContributorID IS NULL AND IPAddress IS NULL;
@@ -56,7 +71,13 @@ select * from PageRevision WHERE ContributorID = 0 AND IPAddress IS null;
 
 -- it's me! UserID = 327592
 select * from [user] where username = 'Mikeblas';
-select * from PageRevision WHERE ContributorID = 327592;
+select * from PageRevision WHERE ContributorID = 327592 ORDER BY RevisionWhen DESC;
+
+-- text copies per article
+SELECT PageID, COUNT(PageID)
+    FROM PageRevision
+   WHERE ArticleText IS NOT NULL
+GROUP BY PageID;
 
  select * FROM PageRevision WHERE ArticleText IS NOT NULL
 

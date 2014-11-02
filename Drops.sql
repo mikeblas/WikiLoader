@@ -11,5 +11,3 @@ TRUNCATE TABLE [User];
 TRUNCATE TABLE [Page];
 TRUNCATE TABLE [PageRevision];
 TRUNCATE TABLE [Namespace];
-
-sp_who2
