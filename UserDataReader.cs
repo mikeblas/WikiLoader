@@ -46,6 +46,19 @@ namespace WikiReader
                     lastUserID = pr.Contributor.ID;
                 }
             }
+
+            if (lastUserID != -1)
+            {
+                lock (insertedUserSet)
+                {
+                    insertedUserSet.Add(lastUserID);
+                }
+            }
+        }
+
+        public int Count
+        {
+            get { return _contributors.Count; }
         }
 
         void IDataReader.Close()

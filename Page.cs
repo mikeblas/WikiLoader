@@ -31,6 +31,8 @@ namespace WikiReader
         /// </summary>
         Int64 _pageId = 0;
 
+        InsertableProgress _progress;
+
         /// <summary>
         /// set indicating which users we've already inserted
         /// </summary>
@@ -42,6 +44,7 @@ namespace WikiReader
         SortedList<Int64, PageRevision> revisions = new SortedList<Int64, PageRevision>();
 
         private int _usersAdded = 0;
+        private int _usersAlready = 0;
         private int _revsAdded = 0;
         private int _revsAlready = 0;
 
@@ -87,8 +90,11 @@ namespace WikiReader
             }
         }
 
-        public void Insert(System.Data.SqlClient.SqlConnection conn)
+        public void Insert(System.Data.SqlClient.SqlConnection conn, InsertableProgress progress)
         {
+            _progress = progress;
+            _progress.AddPendingRevisions(revisions.Count);
+
             // first, insert all the users
             BulkInsertUsers(conn);
 
@@ -98,8 +104,13 @@ namespace WikiReader
             // finally, insert the page itself
             InsertPage(conn);
 
-            System.Console.WriteLine("{0}\n   {1} revisions added, {2} revisions exist", _pageName, _revsAdded, _revsAlready);
-            System.Console.WriteLine("   {0} users added", _usersAdded);
+            System.Console.WriteLine(
+                "{0}\n" +
+                "   {1} revisions added, {2} revisions exist\n" +
+                "   {3} users added, {4} users exist", 
+                _pageName,
+                _revsAdded, _revsAlready,
+                _usersAdded, _usersAlready);
         }
 
         private void BulkInsertUsers(SqlConnection conn)
@@ -111,37 +122,80 @@ namespace WikiReader
             SqlCommand tableCreate = new SqlCommand(
                 "CREATE TABLE [" + tempTableName + "] (" +
                 "	UserID BIGINT NOT NULL," +
-                "	UserName NVARCHAR(80) COLLATE SQL_Latin1_General_CP1_CS_AS NOT NULL );", conn);
+                "	UserName NVARCHAR(128) COLLATE SQL_Latin1_General_CP1_CS_AS NOT NULL );", conn);
             tableCreate.ExecuteNonQuery();
 
-            // bulk insert into the temporary table
-            UserDataReader udr = new UserDataReader(_insertedUserSet, revisions.Values);
-            SqlBulkCopy sbc = new SqlBulkCopy(conn);
-            sbc.DestinationTableName = tempTableName;
-            sbc.ColumnMappings.Add(new SqlBulkCopyColumnMapping("UserID", "UserID"));
-            sbc.ColumnMappings.Add(new SqlBulkCopyColumnMapping("UserName", "UserName"));
-            Trace.Assert(conn.State == ConnectionState.Open);
-            sbc.WriteToServer(udr);
-            Trace.Assert(conn.State == ConnectionState.Open);
+            try
+            {
+                // bulk insert into the temporary table
+                UserDataReader udr = new UserDataReader(_insertedUserSet, revisions.Values);
+                SqlBulkCopy sbc = new SqlBulkCopy(conn);
+                sbc.DestinationTableName = tempTableName;
+                sbc.ColumnMappings.Add(new SqlBulkCopyColumnMapping("UserID", "UserID"));
+                sbc.ColumnMappings.Add(new SqlBulkCopyColumnMapping("UserName", "UserName"));
+                Trace.Assert(conn.State == ConnectionState.Open);
+                sbc.WriteToServer(udr);
+                Trace.Assert(conn.State == ConnectionState.Open);
 
-            // merge up
-            SqlCommand tableMerge = new SqlCommand(
-                "MERGE INTO [User] " +
-                "USING [" + tempTableName + "] AS SRC ON [User].UserID = SRC.UserID " +
-                "WHEN NOT MATCHED THEN " +
-                " INSERT (UserID, UserName) VALUES (SRC.UserID, SRC.UserName);", conn);
-            _usersAdded = tableMerge.ExecuteNonQuery();
-
-            SqlCommand tableDrop = new SqlCommand("DROP TABLE [" + tempTableName + "];", conn);
-            tableDrop.ExecuteNonQuery();
-
+                // merge up.
+                SqlException mergeException = null;
+                for (int retries = 10; retries > 0; retries--)
+                {
+                    try
+                    {
+                        SqlCommand tableMerge = new SqlCommand(
+                            "MERGE INTO [User] WITH (HOLDLOCK) " +
+                            "USING [" + tempTableName + "] AS SRC ON [User].UserID = SRC.UserID " +
+                            "WHEN NOT MATCHED THEN " +
+                            " INSERT (UserID, UserName) VALUES (SRC.UserID, SRC.UserName);", conn);
+                        _usersAdded = tableMerge.ExecuteNonQuery();
+                        _usersAlready = udr.Count - _usersAdded;
+                        mergeException = null;
+                        break;
+                    }
+                    catch (SqlException sex)
+                    {   
+                        if (sex.Number == 1205)
+                        {
+                            System.Console.WriteLine("{0}: Deadlock encountered during USER merge of {2} rows. Retry {1}",
+                                _pageName, retries, udr.Count);
+                            mergeException = sex;
+                            Thread.Sleep(2500);
+                            continue;
+                        }
+                        else if (sex.Number == -2)
+                        {
+                            System.Console.WriteLine("{0}: Timeout encountered during USER merge of {2} rows. Retry {1}",
+                                _pageName, retries, udr.Count);
+                            mergeException = sex;
+                            Thread.Sleep(2500);
+                            continue;
+                        }
+                        else
+                        {
+                            System.Console.WriteLine("MERGE got an exception: {0}, {1}\n{2}",
+                                sex.Number, sex.Source, sex.Message);
+                            throw sex;
+                        }
+                    }
+                }
+                if (mergeException != null)
+                {
+                    System.Console.WriteLine("{0}: USER merge failed 10 times: {1}, {2}\n{3}",
+                        _pageName, mergeException.Number, mergeException.Source, mergeException.Message);
+                    throw mergeException;
+                }
+            }
+            finally
+            {
+                // drop the temporary table
+                SqlCommand tableDrop = new SqlCommand("DROP TABLE [" + tempTableName + "];", conn);
+                tableDrop.ExecuteNonQuery();
+            }
         }
 
         private void InsertRevisions(SqlConnection conn)
         {
-            if (_pageId == 600)
-                System.Console.WriteLine("This one!");
-
             SqlCommand cmd = new SqlCommand(
                 "INSERT INTO [PageRevision] (NamespaceID, PageID, PageRevisionID, ParentPageRevisionID, RevisionWhen, ContributorID, " +
                 "   Comment, ArticleText, IsMinor, ArticleTextLength, UserDeleted, TextDeleted, IPAddress) " +
@@ -204,12 +258,14 @@ namespace WikiReader
                 {
                     cmd.ExecuteNonQuery();
                     _revsAdded += 1;
+                    _progress.CompleteRevisions(1);
                 }
                 catch (SqlException sex)
                 {
                     if (sex.Number == 2601)
                     {
                         _revsAlready += 1;
+                        _progress.CompleteRevisions(1);
                     }
                     else
                     {
@@ -219,6 +275,10 @@ namespace WikiReader
             }
         }
 
+        /// <summary>
+        /// Insert the page object itself
+        /// </summary>
+        /// <param name="conn">Connection to use for insertion</param>
         private void InsertPage(SqlConnection conn)
         {
             SqlCommand cmd = new SqlCommand("INSERT INTO [Page] (NamespaceID, PageID, PageName) VALUES (@NamespaceID, @PageID, @PageName);", conn);
@@ -239,11 +299,17 @@ namespace WikiReader
             }
         }
 
+        /// <summary>
+        /// Get our object name; this is used to name the connection in SQL Server
+        /// </summary>
         String Insertable.ObjectName
         {
             get { return "Page Inserter (" + _pageName + ")"; }
         }
 
+        /// <summary>
+        /// How many revisions do we plan to insert?
+        /// </summary>
         int Insertable.RevisionCount
         {
             get { return revisions.Count; }

@@ -12,7 +12,7 @@ select * from PageRevision
 
 
 -- number of users, pages, revisions
-select count(*) AS CountUsers from [user];
+select count(*) AS CountUsers from [user] WITH(NOLOCK) ;
 SELECT COUNT(*) AS CountRevisions FROM PageRevision;
 SELECT COUNT(*) AS CountPages FROM Page;
 
@@ -71,7 +71,10 @@ select * from PageRevision WHERE ContributorID = 0 AND IPAddress IS null;
 
 -- it's me! UserID = 327592
 select * from [user] where username = 'Mikeblas';
-select * from PageRevision WHERE ContributorID = 327592 ORDER BY RevisionWhen DESC;
+select * from PageRevision WITH(NOLOCK) WHERE ContributorID = 327592 ORDER BY RevisionWhen DESC;
+
+select ContributorID, NamespaceID, PageID, PageRevisionID from PageRevision WITH(NOLOCK) WHERE ContributorID = 327592 ORDER BY RevisionWhen DESC;
+select NamespaceID, PageID, PageRevisionID from PageRevision WITH(NOLOCK) WHERE ContributorID = 327592 ORDER BY RevisionWhen DESC;
 
 -- text copies per article
 SELECT PageID, COUNT(PageID)
@@ -91,3 +94,5 @@ SELECT * FROM PageRevision WHERE ContributorID = 0 AND IPAddress = 0;
 select * from PageRevision WHERE UserDeleted = 1;
 
 select * from PageRevision WHERE Comment IS NULL;
+
+select * from Page ORDER BY PageID

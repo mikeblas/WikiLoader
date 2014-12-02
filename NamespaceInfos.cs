@@ -70,7 +70,7 @@ namespace WikiReader
         /// Takes a SqlConnection and inserts the collection into it.
         /// </summary>
         /// <param name="conn">SqlConnection to write into</param>
-        void Insertable.Insert(SqlConnection conn)
+        void Insertable.Insert(SqlConnection conn, InsertableProgress progress)
         {
             // count of rows actually inserted
             int inserts = 0;

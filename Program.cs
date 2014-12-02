@@ -23,8 +23,8 @@ namespace WikiReader
 
         static void Main(string[] args)
         {
-            String fileName = @"C:\Junk\enwiki-latest-pages-meta-history1.xml-p000000010p000002933";
-            // String fileName = @"F:\Junk\enwiki-latest-pages-meta-history2.xml-p000010001p000012804";
+            // String fileName = @"C:\Junk\enwiki-latest-pages-meta-history1.xml-p000000010p000002933";
+            String fileName = @"f:\junk\enwiki-latest-pages-meta-history4.xml-p000066951p000074581";
             if (args.Length >= 1)
                 fileName = args[0];
 
@@ -194,23 +194,36 @@ namespace WikiReader
                     switch (reader.Name)
                     {
                         case "page":
-                            System.Console.WriteLine("({0}) {1}: {2} revisions, {3} minor revisions", namespaceId, pageName, revisionCount, minorRevisionCount);
-                            System.Console.WriteLine("{0} / {1}: {2:##0.000}", s.Position, s.Length, (s.Position * 100.0) / s.Length);
-                            totalRevisions += revisionCount;
-                            totalMinorRevisions += minorRevisionCount;
-                            totalPages += 1;
-                            revisionCount = 0;
-                            minorRevisionCount = 0;
-
-                            namespaceMap[namespaceId].IncrementCount();
-
                             // grab a copy of the page
                             // clean it up and push it to the pump
                             Page page = pageMap[pageName];
                             page.CloseRevisions();
                             pageMap.Remove(pageName);
-                            _pump.Enqueue(page);
-                            System.Console.WriteLine("Queued {0}", pageName);
+                            int running = 0;
+                            int queued = 0;
+                            int pendingRevisions = 0;
+                            _pump.Enqueue(page, ref running, ref queued, ref pendingRevisions);
+
+                            // write some stats
+                            System.Console.WriteLine(
+                                "{0} / {1}: {2:##0.000}\n" +
+                                "   Queued {3}: {4} revisions, {5} minor revisions\n" +
+                                "   {6} running, {7} queued, {8} pending revisions",
+                                s.Position, s.Length, (s.Position * 100.0) / s.Length,
+                                pageName, revisionCount, minorRevisionCount,
+                                running, queued, pendingRevisions);
+
+                            // tally our stats
+                            totalRevisions += revisionCount;
+                            totalMinorRevisions += minorRevisionCount;
+                            totalPages += 1;
+
+                            // per namespace inserts
+                            namespaceMap[namespaceId].IncrementCount();
+
+                            // reset revision counts in reader
+                            revisionCount = 0;
+                            minorRevisionCount = 0;
                             break;
 
                         case "revision":
@@ -256,14 +269,14 @@ namespace WikiReader
                             inRevision = false;
                             sawMinor = false;
                             contributorUserName = null;
-                            contributorIp.Reset();;
+                            contributorIp.Reset();
                             contributorId = 0;
                             break;
 
                         case "contributor":
                             // System.Console.WriteLine("inContributor == {0}", inContributor);
                             inContributor = false;
-                            if (contributorIp == null)
+                            if (contributorIp.Current == null)
                             {
                                 //REVIEW: how to handle anonymous edits?
                                 if (contributorMap.ContainsKey(contributorUserName))
@@ -279,12 +292,20 @@ namespace WikiReader
 
                         case "namespaces":
                             System.Console.WriteLine("Read {0} namespaces", namespaceMap.Count );
-                            _pump.Enqueue(namespaceMap);
+                            running = 0;
+                            queued = 0;
+                            pendingRevisions = 0;
+                            _pump.Enqueue(namespaceMap, ref running, ref queued, ref pendingRevisions);
                             break;
                     }
                 }
             }
+            reader.Close();
 
+            // wait for the pump to complete before spewing stats
+            _pump.WaitForComplete();
+
+            // done, spew stats!
             System.Console.WriteLine("{0} total pages", totalPages);
             System.Console.WriteLine("{0} total revisions", totalRevisions);
             System.Console.WriteLine("{0} total minor revisions", totalMinorRevisions);
@@ -298,8 +319,6 @@ namespace WikiReader
                 System.Console.WriteLine("{0},{1}", ns.PageCount, ns.Name);
             }
 
-            reader.Close();
-            _pump.WaitForComplete();
         }
     }
 }

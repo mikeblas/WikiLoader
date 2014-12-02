@@ -21,7 +21,7 @@ namespace WikiReader
     /// Only one instance can exist because of some shared state in static members.
     /// Need to add some singleton pattern implementation so that it is protected.
     /// </summary>
-    class DatabasePump
+    class DatabasePump : InsertableProgress
     {
         /// <summary>
         /// CallerInfo provides context for an execution. Contains the SqlConnection
@@ -31,11 +31,13 @@ namespace WikiReader
         {
             public Insertable _i;
             public SqlConnection _conn;
+            public InsertableProgress _progress;
 
-            public CallerInfo(SqlConnection conn, Insertable i)
+            public CallerInfo(SqlConnection conn, Insertable i, InsertableProgress progress)
             {
                 _conn = conn;
                 _i = i;
+                _progress = progress;
             }
         }
 
@@ -77,16 +79,29 @@ namespace WikiReader
         /// Add an Insertable that is ready to go to the database.
         /// </summary>
         /// <param name="i">reference to an object implementing Insertable; we'll enqueue it and add it whne we have threads</param>
-        public void Enqueue(Insertable i)
+        public void Enqueue(Insertable i, ref int running, ref int queued, ref int pendingRevisions )
         {
+            // backpressure
+            while (_running >= 5 || _queued >= 100)
+            {
+                System.Console.WriteLine("Backpressure: {0} running, {1} queued, {2} pending revisions", _running, _queued, _pendingRevisions);
+                Thread.Sleep(1000);
+            }
+
             // get a new connection
-            SqlConnection conn = new SqlConnection(ConnectionString + "Application Name=" + i.ObjectName + ";");
+            // use the object name as the "application name",
+            // but that name can't have semicolons and can't
+            // be more than 128 characters. We also strip equals
+            // signs to reduce attack surface area.
+            String appNameRaw = i.ObjectName.Replace(";", "").Replace("=", "");
+            String appNameTrimmed = appNameRaw.Substring(0, Math.Min(appNameRaw.Length, 100));
+            SqlConnection conn = new SqlConnection(ConnectionString + "Application Name=" + appNameTrimmed + ";");
 
             for (int retries = 10; retries > 0; retries--)
             {
                 try
                 {
-                    conn.Open();
+                    conn.Open();    
                     break;
                 }
                 catch (SqlException sex)
@@ -111,18 +126,22 @@ namespace WikiReader
             }
 
             // create a CallerInfo instance with the Insertable and our connection
-            CallerInfo ci = new CallerInfo(conn, i);
+            CallerInfo ci = new CallerInfo(conn, i, this);
 
             // queue it up! 
+            Interlocked.Increment(ref _queued);
             ThreadPool.QueueUserWorkItem(new WaitCallback(caller), ci);
 
-            // print out our current running count. This might not
-            // have incremented just yet, but this is a convenient 
-            // time to show status
-            System.Console.WriteLine("{0} running", _running);
+            // return our current running count. This might
+            // not have incremented just yet, but this is a convenient 
+            // time to help show status
+            running = _running;
+            queued = _queued;
+            pendingRevisions = _pendingRevisions;
         }
 
-        private static int _running = 0;
+        private static volatile int _running = 0;
+        private static volatile int _queued = 0;
 
         /// <summary>
         /// Callback for the thread to do work. Does some
@@ -134,13 +153,17 @@ namespace WikiReader
             // cast the generic object to our CallerInfo
             CallerInfo ci = (CallerInfo)obj;
 
+            // remove from the queued count
+            Interlocked.Decrement(ref _queued);
+
             // add to the running count
             Interlocked.Increment( ref _running );
+
 
             try
             {
                 // go work the insertion
-                ci._i.Insert(ci._conn);
+                ci._i.Insert(ci._conn, ci._progress);
             }
             finally
             {
@@ -156,10 +179,22 @@ namespace WikiReader
         {
             while (_running > 0)
             {
-                System.Console.WriteLine("{0} still running", _running);
+                System.Console.WriteLine("{0} still running, {1} pending revisions", _running, _pendingRevisions);
                 Thread.Sleep(1000);
             }
             return;
         }
+
+        int _pendingRevisions = 0;
+        public void AddPendingRevisions(int count)
+        {
+            Interlocked.Add(ref _pendingRevisions, count);
+        }
+
+        public void CompleteRevisions(int count)
+        {
+            Interlocked.Add( ref _pendingRevisions, -count);
+        }
     }
 }
+
