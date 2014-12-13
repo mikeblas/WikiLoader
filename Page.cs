@@ -289,6 +289,7 @@ namespace WikiReader
             try
             {
                 cmd.ExecuteNonQuery();
+                _progress.InsertedPages(1);
             }
             catch (SqlException sex)
             {

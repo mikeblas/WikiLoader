@@ -185,7 +185,18 @@ namespace WikiReader
             return;
         }
 
+        public int getInsertedPages()
+        {
+            return _insertedPages;
+        }
+
+        /// <summary>
+        /// implementation of InsertableProgress
+        /// </summary>
         int _pendingRevisions = 0;
+        int _insertedPages = 0;
+        int _insertedUsers = 0;
+        int _insertedRevisions = 0;
         public void AddPendingRevisions(int count)
         {
             Interlocked.Add(ref _pendingRevisions, count);
@@ -194,6 +205,22 @@ namespace WikiReader
         public void CompleteRevisions(int count)
         {
             Interlocked.Add( ref _pendingRevisions, -count);
+        }
+
+
+        public void InsertedPages(int count)
+        {
+            Interlocked.Add(ref _insertedPages, count);
+        }
+
+        public void InsertedUsers(int count)
+        {
+            Interlocked.Add(ref _insertedUsers, count);
+        }
+
+        public void InsertedRevisions(int count)
+        {
+            Interlocked.Add(ref _insertedRevisions, count);
         }
     }
 }
