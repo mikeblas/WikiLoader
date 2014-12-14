@@ -199,9 +199,9 @@ namespace WikiReader
                             Page page = pageMap[pageName];
                             page.CloseRevisions();
                             pageMap.Remove(pageName);
-                            int running = 0;
-                            int queued = 0;
-                            int pendingRevisions = 0;
+                            long running = 0;
+                            long queued = 0;
+                            long pendingRevisions = 0;
                             _pump.Enqueue(page, ref running, ref queued, ref pendingRevisions);
 
                             // write some stats

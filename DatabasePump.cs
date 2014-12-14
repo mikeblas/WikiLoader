@@ -79,12 +79,15 @@ namespace WikiReader
         /// Add an Insertable that is ready to go to the database.
         /// </summary>
         /// <param name="i">reference to an object implementing Insertable; we'll enqueue it and add it whne we have threads</param>
-        public void Enqueue(Insertable i, ref int running, ref int queued, ref int pendingRevisions )
+        public void Enqueue(Insertable i, ref long running, ref long queued, ref long pendingRevisions )
         {
             // backpressure
-            while (_running >= 5 || _queued >= 100)
+            while (Interlocked.Read(ref _running) >= 5 || Interlocked.Read(ref _queued) >= 100)
             {
-                System.Console.WriteLine("Backpressure: {0} running, {1} queued, {2} pending revisions", _running, _queued, _pendingRevisions);
+                System.Console.WriteLine("Backpressure: {0} running, {1} queued, {2} pending revisions",
+                    Interlocked.Read(ref _running),
+                    Interlocked.Read(ref _queued),
+                    _pendingRevisions);
                 Thread.Sleep(1000);
             }
 
@@ -140,8 +143,8 @@ namespace WikiReader
             pendingRevisions = _pendingRevisions;
         }
 
-        private static volatile int _running = 0;
-        private static volatile int _queued = 0;
+        private static long _running = 0;
+        private static long _queued = 0;
 
         /// <summary>
         /// Callback for the thread to do work. Does some
