@@ -6,7 +6,7 @@ namespace WikiReader
 {
     interface Insertable
     {
-        void Insert(SqlConnection conn, InsertableProgress progress);
+        void Insert(DatabasePump pump, SqlConnection conn, InsertableProgress progress);
 
         String ObjectName
         {

@@ -11,12 +11,10 @@ namespace WikiReader
 {
     class Program
     {
-        String _fileName;
         DatabasePump _pump;
 
-        Program(String fileName)
+        Program()
         {
-            _fileName = fileName;
             _pump = new DatabasePump();
             _pump.TestConnection();
         }
@@ -24,18 +22,34 @@ namespace WikiReader
         static void Main(string[] args)
         {
             // String fileName = @"C:\Junk\enwiki-latest-pages-meta-history1.xml-p000000010p000002933";
-            String fileName = @"f:\junk\enwiki-latest-pages-meta-history4.xml-p000066951p000074581";
+            // String fileName = @"f:\junk\enwiki-latest-pages-meta-history4.xml-p000066951p000074581";
+            String fileName = @"f:\junk\enwiki-latest-pages-meta-history10.xml-p001243738p001325000";
             if (args.Length >= 1)
                 fileName = args[0];
 
-            Program p = new Program(fileName);
-            p.Parse();
+            Program p = new Program();
+            String strResult = null;
+            try
+            {
+                p._pump.StartRun(fileName);
+                p.Parse(fileName);
+                strResult = "Success.";
+            }
+            catch (Exception x)
+            {
+                strResult = x.Message;
+                throw x;
+            }
+            finally
+            {
+                p._pump.CompleteRun( strResult );
+            }
         }
 
 
-        void Parse()
+        void Parse(String fileName)
         {
-            FileStream s = File.OpenRead(_fileName);
+            FileStream s = File.OpenRead(fileName);
             XmlReader reader = XmlReader.Create(s, null);
 
             String pageName = null;
@@ -69,10 +83,13 @@ namespace WikiReader
             // dictionary from namespace ID to namespace string
             NamespaceInfos namespaceMap = new NamespaceInfos();
 
+            long currentActivity = -1;
+
             while (reader.Read())
             {
                 if (reader.IsStartElement())
                 {
+                    // Console.Write('S');
                     switch (reader.Name)
                     {
                         case "minor":
@@ -134,6 +151,13 @@ namespace WikiReader
 
                         case "revision":
                             inRevision = true;
+
+                            // by this point, everything we need to know about a page should be set
+                            // start an action for this page, then, if we don't have one already flying
+                            if (currentActivity == -1)
+                            {
+                                currentActivity = _pump.StartActivity("Read Page", namespaceId, pageId, null);
+                            }
                             break;
 
                         case "contributor":
@@ -191,13 +215,13 @@ namespace WikiReader
                 }
                 else if (reader.NodeType == XmlNodeType.EndElement)
                 {
+                    // Console.Write('E');
                     switch (reader.Name)
                     {
                         case "page":
                             // grab a copy of the page
                             // clean it up and push it to the pump
                             Page page = pageMap[pageName];
-                            page.CloseRevisions();
                             pageMap.Remove(pageName);
                             long running = 0;
                             long queued = 0;
@@ -221,9 +245,17 @@ namespace WikiReader
                             // per namespace inserts
                             namespaceMap[namespaceId].IncrementCount();
 
+                            // push the activity in
+                            if (currentActivity != -1)
+                            {
+                                _pump.CompleteActivity(currentActivity, revisionCount, null);
+                                currentActivity = -1;
+                            }
+
                             // reset revision counts in reader
                             revisionCount = 0;
                             minorRevisionCount = 0;
+                            pageName = null;
                             break;
 
                         case "revision":
@@ -271,6 +303,8 @@ namespace WikiReader
                             contributorUserName = null;
                             contributorIp.Reset();
                             contributorId = 0;
+                            comment.Current = null;
+                            articleText.Current = null;
                             break;
 
                         case "contributor":

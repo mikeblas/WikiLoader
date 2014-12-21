@@ -70,12 +70,14 @@ namespace WikiReader
         /// Takes a SqlConnection and inserts the collection into it.
         /// </summary>
         /// <param name="conn">SqlConnection to write into</param>
-        void Insertable.Insert(SqlConnection conn, InsertableProgress progress)
+        void Insertable.Insert(DatabasePump pump, SqlConnection conn, InsertableProgress progress)
         {
             // count of rows actually inserted
             int inserts = 0;
             // count of rows we didn't insert becuase they were dupes
             int already = 0;
+
+            long activityID = pump.StartActivity("Insert Namespaces", null, null, _namespaceMap.Count);
 
             // command to push a new row into the Namespace table
             SqlCommand cmd = new SqlCommand("INSERT INTO [Namespace] (NamespaceID, NamespaceName) VALUES ( @ID, @Name );", conn);
@@ -112,6 +114,7 @@ namespace WikiReader
 
             // show our results
             System.Console.WriteLine("Inserted {0} new namespaces; {1} already known", inserts, already);
+            pump.CompleteActivity(activityID, inserts, null);
         }
 
         String Insertable.ObjectName

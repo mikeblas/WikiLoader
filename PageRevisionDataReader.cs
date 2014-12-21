@@ -13,12 +13,16 @@ namespace WikiReader
         /// What revision would be next read?
         /// </summary>
         int _currentRevision = -1;
+        int _namespaceID;
+        long _pageID;
 
         Dictionary<string, int> _columnMap = new Dictionary<string, int>();
         Dictionary<int, string> _indexMap = new Dictionary<int, string>();
 
-        public PageRevisionDataReader(IList<PageRevision> pages)
+        public PageRevisionDataReader(int namespaceID, long pageID, IList<PageRevision> pages)
         {
+            _namespaceID = namespaceID;
+            _pageID = pageID;
             foreach (PageRevision pr in pages)
             {
                 _revisions.Add(pr);
@@ -195,6 +199,7 @@ namespace WikiReader
             {
                 return index;
             }
+            System.Console.WriteLine("Couldn't find {0}", name);
             throw new NotImplementedException();
         }
 
@@ -205,7 +210,86 @@ namespace WikiReader
 
         object IDataRecord.GetValue(int i)
         {
-            throw new NotImplementedException();
+            String columnName;
+
+            if ( ! _indexMap.TryGetValue(i, out columnName) )
+                throw new NotImplementedException();
+
+            string columnNameLower = columnName.ToLower();
+
+            PageRevision record = _revisions[_currentRevision]; 
+
+            switch (columnNameLower)
+            {
+                case "namespaceid":
+                    return _namespaceID;
+
+                case "pageid":
+                    return _pageID;
+
+                case "isminor":
+                    return record.IsMinor;
+
+                case "articletextlength":
+                    return record.TextLength;
+
+                case "articletext":
+                    return record.Text;
+
+                case "comment":
+                    return record.Comment;
+
+                case "pagerevisionid":
+                    return record.revisionId;
+
+                case "parentpagerevisionid":
+                    return record.parentRevisionId;
+
+                case "revisionwhen":
+                    return record.timestamp;
+
+                case "textdeleted":
+                    return record.TextDeleted;
+
+                case "contributorid":
+                    {
+                        if (record.Contributor == null)
+                        {
+                            return null;
+                        }
+                        else
+                        {
+                            if (record.Contributor.IsAnonymous)
+                                return null;
+                            else
+                                return record.Contributor.ID;
+                        }
+                    }
+
+                case "userdeleted":
+                    if (record.Contributor != null)
+                        return false;
+                    else
+                        return true;
+
+                case "ipaddress":
+                    if (record.Contributor == null)
+                        return null;
+                    else
+                    {
+                        if (record.Contributor.IsAnonymous)
+                            return record.Contributor.IPAddress;
+                        else
+                            return null;
+                    }
+
+
+                default:
+                    System.Console.WriteLine("Need more cases! {0}, {1}", i, columnName);
+                    break;
+            }
+
+            return null;
         }
 
         int IDataRecord.GetValues(object[] values)
