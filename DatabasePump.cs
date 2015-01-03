@@ -123,7 +123,7 @@ namespace WikiReader
 
             SqlCommand updateRun = new SqlCommand(
                 "UPDATE Run " +
-                "   SET EndTime = GetDate(), " +
+                "   SET EndTime = GetUTCDate(), " +
                 "       Result = @Result" + 
                 "  WHERE RunID = @RunID;", conn);
 
@@ -194,6 +194,8 @@ namespace WikiReader
             }
 
             completeActivity.ExecuteNonQuery();
+            conn.Close();
+            conn.Dispose();
 
             return;
         }
