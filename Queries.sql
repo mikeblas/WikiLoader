@@ -6,16 +6,12 @@ SET STATISTICS IO ON;
 select * from Namespace;
 
 
-select * from [User]
-
-select * from PageRevision
-
-
 -- number of users, pages, revisions
 select count(*) AS CountUsers from [user] WITH(NOLOCK) ;
 SELECT COUNT(*) AS CountRevisions FROM PageRevision;
 SELECT COUNT(*) AS CountPages FROM Page;
 
+select * from run;
 
 -- number of revisions per page
 SELECT Total.PageID, PageName, PageRevisionCount
@@ -25,6 +21,29 @@ SELECT Total.PageID, PageName, PageRevisionCount
   GROUP BY PageID) AS Total
 JOIN Page ON Page.PageID = Total.PageID
   ORDER BY 3 DESC;
+
+-- top 100 revisions per page
+SELECT NS.NamespaceName, Page.PageName, RevisionCount
+FROM
+( select TOP 100 NamespaceID, PageID, COUNT(PagerevisionID) AS RevisionCount
+FROM PageRevision
+ GROUP BY NamespaceID, PageID
+ ORDER BY 3 DESC
+ ) AS RevCounts
+ JOIN [Page] ON [Page].PageID = RevCounts.PageID
+ JOIN Namespace AS NS ON NS.NamespaceID = RevCounts.NamespaceID
+ORDER BY 3 DESC;
+
+
+-- Total pages, revisions, by Namespace
+SELECT NS.NamespaceName, TOTALS.DistinctPages, TOTALS.PageRevisions
+ FROM (
+	  SELECT NamespaceID, COUNT(DISTINCT PageID) AS DistinctPages, COUNT(PageRevisionID) AS PageRevisions
+	    FROM PageRevision
+	GROUP BY NamespaceID
+	) AS Totals
+JOIN Namespace AS NS ON NS.NamespaceID = TOTALS.NamespaceID
+ORDER BY NS.NamespaceName;
 
 
 -- Find PageRevisions that don't correspond to
@@ -65,6 +84,22 @@ ORDER BY 3 DESC;
  ORDER BY 2 DESC;
 
 
+ -- most recent page reads
+select *
+ from Activity WHERE Activity = 'Read Page'
+ ORDER BY ActivityID DESC;
+
+-- logest page reads (From XML)
+select *
+ from Activity WHERE Activity = 'Read Page'
+ ORDER BY DurationMillis DESC;
+
+-- longest revision merges
+select *
+    from Activity WHERE Activity = 'Merge PageRevisions'
+ORDER BY DurationMillis DESC;
+
+
 select * from PageRevision WHERE ContributorID IS NULL AND IPAddress IS NULL;
 
 select * from PageRevision WHERE ContributorID = 0 AND IPAddress IS null;
@@ -77,10 +112,10 @@ select ContributorID, NamespaceID, PageID, PageRevisionID from PageRevision WITH
 select NamespaceID, PageID, PageRevisionID from PageRevision WITH(NOLOCK) WHERE ContributorID = 327592 ORDER BY RevisionWhen DESC;
 
 -- text copies per article
-SELECT PageID, COUNT(PageID)
+SELECT PageID, COUNT(PageID) AS TotalRevisions, SUM(CASE WHEN ArticleText IS NOT NULL THEN 1 ELSE 0 END) AS RevisionsWithText
     FROM PageRevision
-   WHERE ArticleText IS NOT NULL
-GROUP BY PageID;
+GROUP BY PageID
+ORDER BY TotalRevisions DESC;
 
  select * FROM PageRevision WHERE ArticleText IS NOT NULL
 
