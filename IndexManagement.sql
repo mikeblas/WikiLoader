@@ -1,3 +1,4 @@
+SET STATISTICS IO ON;
 
 -- Find the average fragmentation percentage of all indexes
 -- in all tables of a database
@@ -17,3 +18,13 @@ GO
 select ST.name, SI.name, SI.rowcnt
   from sysindexes AS SI 
   JOIN sys.tables AS ST ON ST.object_id = SI.ID;
+
+
+
+ALTER INDEX ALL ON [User]
+REBUILD WITH (FILLFACTOR=80);
+
+ALTER INDEX PageRevision_AK ON [PageRevision] REBUILD;
+
+
+-- sp_help PageRevision
