@@ -11,7 +11,28 @@ select count(*) AS CountUsers from [user] WITH(NOLOCK) ;
 SELECT COUNT(*) AS CountRevisions FROM PageRevision;
 SELECT COUNT(*) AS CountPages FROM Page;
 
-select * from run;
+select * from run ORDER By RunID DESC;
+
+select *, DATEDIFF(millisecond, StartTime, EndTime) from run ORDER By RunID DESC;
+select *, DATEDIFF(millisecond, StartTime, EndTime) from run ORDER By DATEDIFF(millisecond, StartTime, EndTime)  DESC;
+
+select * from Activity WHERE RunID = 50 ORDER BY DurationMillis DESC;
+select * from Activity WHERE RunID = 50 ORDER BY TargetPageID;
+
+
+select RunID, SUM(WorkCount)
+ FROM Activity
+ WHERE Activity = 'Merge PageRevisions'
+GROUP BY RunID
+
+select * from [page] where pageid= 564696 and namespaceid = 4;
+
+
+select TOP 1000 * from Activity Order by ActivityID DESC
+
+select TOP 1000 * from Activity WHERE RunID = 56 AND Activity = 'Merge PageRevisions' Order by ActivityID DESC
+
+select * from Activity WHERE WorkCount = 22990 
 
 -- number of revisions per page
 SELECT Total.PageID, PageName, PageRevisionCount
