@@ -23,7 +23,8 @@ namespace WikiReader
         {
             // String fileName = @"C:\Junk\enwiki-latest-pages-meta-history1.xml-p000000010p000002933";
             // String fileName = @"f:\junk\enwiki-latest-pages-meta-history4.xml-p000066951p000074581";
-            String fileName = @"f:\junk\enwiki-latest-pages-meta-history10.xml-p001243738p001325000";
+            // String fileName = @"f:\junk\enwiki-latest-pages-meta-history10.xml-p000925001p000972034";
+            String fileName = @"f:\junk\enwiki-latest-pages-meta-history19.xml-p009225001p009575994";
             if (args.Length >= 1)
                 fileName = args[0];
 
@@ -181,7 +182,21 @@ namespace WikiReader
                             if (!reader.IsEmptyElement)
                             {
                                 reader.Read();
-                                articleText.Current = reader.Value;
+                                try
+                                {
+                                    articleText.Current = reader.Value;
+                                }
+                                catch (OutOfMemoryException oom)
+                                {
+                                    if ( articleText.Current != null )
+                                        System.Console.WriteLine("articleText == {0}", articleText.Current.Length);
+                                    else
+                                        System.Console.WriteLine("articleText == is null");
+                                    System.Console.WriteLine("revisionID == {0}", revisionId);
+                                    System.Console.WriteLine("reader == {0}", reader.Value.Length);
+                                    System.Console.WriteLine("timestamp == {0}", timestamp);
+                                    throw oom;
+                                }
                             }
                             else
                             {
@@ -262,6 +277,9 @@ namespace WikiReader
                             // System.Console.WriteLine(" {0}: {1}, {2}, {3}", pageName, revisionId, timestamp, articleText.Length );
                             // System.Console.WriteLine(" {0}: ", contributorUserName, comment);
                             revisionCount += 1;
+
+                            if (revisionCount % 1000 == 0)
+                                System.Console.WriteLine(" {0}: {1} revisions", pageName, revisionCount);
 
                             if (sawMinor)
                                 minorRevisionCount += 1;

@@ -300,7 +300,7 @@ namespace WikiReader
                             "	SRC.RevisionWhen, SRC.ContributorID, SRC.IPAddress, SRC.Comment, " +
                             "	SRC.ArticleText, SRC.IsMinor, SRC.ArticleTextLength, SRC.TextDeleted, SRC.UserDeleted);",
                             conn);
-                        tableMerge.CommandTimeout = 300;
+                        tableMerge.CommandTimeout = 1800;
                         _revsAdded = tableMerge.ExecuteNonQuery();
                         _revsAlready = prdr.Count - _revsAdded;
                         mergeException = null;
