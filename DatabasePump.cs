@@ -224,16 +224,29 @@ namespace WikiReader
             // use the object name as the "application name",
             // but that name can't have semicolons and can't
             // be more than 128 characters. We also strip equals
-            // signs to reduce attack surface area.
-            String appNameRaw = i.ObjectName.Replace(";", "").Replace("=", "");
+            // signs to reduce attack surface area. Can't have
+            // quotes or apostrophies, either.
+            String appNameRaw = i.ObjectName.Replace(";", "").Replace("=", "").Replace("\"", "").Replace("'", "");
             String appNameTrimmed = appNameRaw.Substring(0, Math.Min(appNameRaw.Length, 100));
-            SqlConnection conn = new SqlConnection(ConnectionString + "Application Name=" + appNameTrimmed + ";");
+            String totalConnectionString = ConnectionString + "Application Name=" + appNameTrimmed + ";";
 
+            SqlConnection conn = null;
+            try
+            {
+                conn = new SqlConnection(totalConnectionString);
+            }
+            catch (ArgumentException ax)
+            {
+                // something wrong, so fall back to a safer string
+                System.Console.WriteLine("Connection failed. Connection string = \"{0}\"", totalConnectionString);
+                conn = new SqlConnection(ConnectionString);
+            }
+           
             for (int retries = 10; retries > 0; retries--)
             {
                 try
                 {
-                    conn.Open();    
+                    conn.Open();
                     break;
                 }
                 catch (SqlException sex)
