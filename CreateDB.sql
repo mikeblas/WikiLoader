@@ -2,13 +2,13 @@ USE [master]
 GO
 
 
-DROP DATABASE Wikipedia;
+-- DROP DATABASE Wikipedia;
 
 /****** Object:  Database [Wikipedia]    Script Date: 2014-10-30 09:53:57 ******/
 CREATE DATABASE [Wikipedia]
  CONTAINMENT = NONE
  ON  PRIMARY 
-( NAME = N'Wikipedia', FILENAME = N'G:\SQLData\Wikipedia.mdf' , SIZE = 1024MB , MAXSIZE = UNLIMITED, FILEGROWTH = 256MB )
+( NAME = N'Wikipedia', FILENAME = N'G:\SQLData\Wikipedia.mdf' , SIZE = 51200MB , MAXSIZE = UNLIMITED, FILEGROWTH = 256MB )
  LOG ON 
 ( NAME = N'Wikipedia_log', FILENAME = N'H:\SQLLogs\Wikipedia_log.ldf' , SIZE = 128MB , MAXSIZE = 2GB , FILEGROWTH = 128MB )
 GO
@@ -88,7 +88,7 @@ GO
 ALTER DATABASE [Wikipedia] SET HONOR_BROKER_PRIORITY OFF 
 GO
 
-ALTER DATABASE [Wikipedia] SET RECOVERY FULL 
+ALTER DATABASE [Wikipedia] SET RECOVERY BULK_LOGGED WITH NO_WAIT
 GO
 
 ALTER DATABASE [Wikipedia] SET  MULTI_USER 
