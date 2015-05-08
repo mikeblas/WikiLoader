@@ -5,7 +5,7 @@ SET STATISTICS IO ON;
 -- all the namespaces
 select * from Namespace;
 
-
+select * from msdb..suspect_pages
 -- number of users, pages, revisions
 select count(*) AS CountUsers from [user] WITH(NOLOCK) ;
 SELECT COUNT(*) AS CountRevisions FROM PageRevision;
@@ -20,10 +20,51 @@ select * from Activity WHERE RunID = 50 ORDER BY DurationMillis DESC;
 select * from Activity WHERE RunID = 50 ORDER BY TargetPageID;
 
 
+
 select RunID, SUM(WorkCount)
  FROM Activity
  WHERE Activity = 'Merge PageRevisions'
 GROUP BY RunID
+
+
+-- counts of page states
+-- runs in about 5 minutes 
+select NamespaceID,
+   SUM(CASE WHEN TextAvailable = 1 THEN 1 ELSE 0 END) AS TextAvailable,
+   SUM(CASE WHEN TextAvailable = 0 THEN 1 ELSE 0 END) AS TextNotAvailable,
+   SUM(CASE WHEN TextAvailable IS NULL THEN 1 ELSE 0 END) AS TextAvailableNull
+FROM  PageRevision
+GROUP BY NamespaceID
+ORDER BY NamespaceID
+
+
+-- ID ranges and page count per Namespace
+  SELECT NamespaceID, MIN(PageID) AS Min, MAX(PageID) AS Max, COUNT(PageRevisionID) AS Count
+    FROM PageRevision
+GROUP BY NamespaceID;
+
+  SELECT NamespaceID, MIN(PageID) AS Min, MAX(PageID) AS Max, COUNT(PageRevisionID) AS Count,
+         (SELECT COUNT(*) FROM PageRevisionText WHERE PageRevisionText.NamespaceID = PageRevision.NamespaceID) AS Texts
+    FROM PageRevision
+GROUP BY NamespaceID
+ORDER BY NamespaceID;
+
+
+-- what pages are marked available, but not actually found?
+SELECT PageRevision.NamespaceID, PageRevision.PageID, PageRevision.PageRevisionID
+  FROM PageRevision
+ WHERE TextAvailable = 1
+   AND PageRevision.ArticleText IS NULL
+   AND NOT EXISTS (
+			SELECT 1
+			  FROM PageRevisionText
+		     WHERE PageRevisionText.PageID = PageRevision.PageID
+			   AND PageRevisionText.NamespaceID = PageRevision.NamespaceID
+			   AND PageRevisionText.PageRevisionID = PageRevision.PageRevisionID
+			   )
+ORDER BY 1, 2, 3
+
+
 
 select * from [page] where pageid= 564696 and namespaceid = 4;
 
@@ -152,3 +193,5 @@ select * from PageRevision WHERE UserDeleted = 1;
 select * from PageRevision WHERE Comment IS NULL;
 
 select * from Page ORDER BY PageID
+
+DBCC CHECKDB

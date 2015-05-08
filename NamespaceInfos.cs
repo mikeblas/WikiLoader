@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Data.Sql;
 using System.Data.SqlClient;
+using System.Threading;
 
 namespace WikiReader
 {
@@ -27,6 +28,11 @@ namespace WikiReader
         public NamespaceInfos()
         {
             _namespaceMap = new Dictionary<Int64, NamespaceInfo>();
+        }
+
+        public ManualResetEvent GetCompletedEvent()
+        {
+            throw new Exception("Not implemented!");
         }
 
         /// <summary>
@@ -70,7 +76,7 @@ namespace WikiReader
         /// Takes a SqlConnection and inserts the collection into it.
         /// </summary>
         /// <param name="conn">SqlConnection to write into</param>
-        void Insertable.Insert(DatabasePump pump, SqlConnection conn, InsertableProgress progress)
+        void Insertable.Insert(Insertable previous, DatabasePump pump, SqlConnection conn, InsertableProgress progress)
         {
             // count of rows actually inserted
             int inserts = 0;

@@ -24,7 +24,8 @@ namespace WikiReader
             // String fileName = @"C:\Junk\enwiki-latest-pages-meta-history1.xml-p000000010p000002933";
             // String fileName = @"f:\junk\enwiki-latest-pages-meta-history4.xml-p000066951p000074581";
             // String fileName = @"f:\junk\enwiki-latest-pages-meta-history10.xml-p000925001p000972034";
-            String fileName = @"f:\junk\enwiki-latest-pages-meta-history19.xml-p009225001p009575994";
+            // String fileName = @"f:\junk\enwiki-latest-pages-meta-history19.xml-p009225001p009575994";
+            String fileName = @"f:\junk\enwiki-latest-pages-meta-history10.xml-p000925001p000972034";
             if (args.Length >= 1)
                 fileName = args[0];
 
@@ -85,6 +86,7 @@ namespace WikiReader
             NamespaceInfos namespaceMap = new NamespaceInfos();
 
             long currentActivity = -1;
+            Page previousPage = null;
 
             while (reader.Read())
             {
@@ -241,7 +243,8 @@ namespace WikiReader
                             long running = 0;
                             long queued = 0;
                             long pendingRevisions = 0;
-                            _pump.Enqueue(page, ref running, ref queued, ref pendingRevisions);
+                            _pump.Enqueue(page, previousPage, ref running, ref queued, ref pendingRevisions);
+                            previousPage = page;
 
                             // write some stats
                             System.Console.WriteLine(
@@ -279,7 +282,7 @@ namespace WikiReader
                             revisionCount += 1;
 
                             if (revisionCount % 1000 == 0)
-                                System.Console.WriteLine(" {0}: {1} revisions", pageName, revisionCount);
+                                System.Console.WriteLine(" {0}: read {1} revisions", pageName, revisionCount);
 
                             if (sawMinor)
                                 minorRevisionCount += 1;
@@ -347,7 +350,7 @@ namespace WikiReader
                             running = 0;
                             queued = 0;
                             pendingRevisions = 0;
-                            _pump.Enqueue(namespaceMap, ref running, ref queued, ref pendingRevisions);
+                            _pump.Enqueue(namespaceMap, null, ref running, ref queued, ref pendingRevisions);
                             break;
                     }
                 }

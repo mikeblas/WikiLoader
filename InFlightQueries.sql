@@ -7,11 +7,13 @@
 			req.command,
 			req.cpu_time,
 			req.total_elapsed_time, 
-			req.last_wait_type,
-			req.wait_time,
 			req.reads,
-			req.writes,
 			req.logical_reads,
+			req.writes,
+			req.wait_Type,
+			req.wait_time,
+			req.last_wait_type,
+--			req.logical_writes,
   			req.wait_resource
        FROM sys.dm_exec_requests req
 CROSS APPLY sys.dm_exec_sql_text(sql_handle) AS sqltext;
@@ -68,3 +70,11 @@ select * FROM sys.dm_os_performance_counters WHERE counter_name = 'Page splits/s
 
 
 
+DBCC traceon (3604)
+GO
+23:4:10105296
+DBCC page (23, 4, 10105296) --Database_id,file_id,page_id 
+
+select object_name(277576027)
+153
+256

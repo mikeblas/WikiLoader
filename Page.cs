@@ -35,6 +35,13 @@ namespace WikiReader
 
         DatabasePump _pump;
 
+        ManualResetEvent completeEvent = new ManualResetEvent(false);
+
+        public ManualResetEvent GetCompletedEvent()
+        {
+            return completeEvent;
+        }
+
         /// <summary>
         /// set indicating which users we've already inserted
         /// </summary>
@@ -64,7 +71,7 @@ namespace WikiReader
         }
 
         /// <summary>
-        /// add a revision to the history of this page
+        /// add a revision to the history of this page in memory
         /// </summary>
         /// <param name="pr"></param>
         public void AddRevision(PageRevision pr)
@@ -89,7 +96,14 @@ namespace WikiReader
             }
         }
 
-        public void Insert(DatabasePump pump, SqlConnection conn, InsertableProgress progress)
+        /// <summary>
+        /// Insert this page, all its revisions, text, and related users
+        /// </summary>
+        /// <param name="previous"></param>
+        /// <param name="pump"></param>
+        /// <param name="conn">connection to use for insertion</param>
+        /// <param name="progress">InsertableProgress interface for progress callbacks</param>
+        public void Insert(Insertable previous, DatabasePump pump, SqlConnection conn, InsertableProgress progress)
         {
             _pump = pump;
             _progress = progress;
@@ -98,10 +112,13 @@ namespace WikiReader
             // first, insert all the users
             BulkInsertUsers(conn);
 
-            // then, insert the revisions themselves
-            BulkInsertRevisions(conn);
+            // then, insert the revisions
+            BulkInsertRevisions(previous, conn);
 
-            // finally, insert the page itself
+            // insert the text that we have
+            BulkInsertRevisionText(conn);
+
+            // finally, insert the page record itself
             InsertPage(conn);
 
             System.Console.WriteLine(
@@ -113,6 +130,10 @@ namespace WikiReader
                 _usersAdded, _usersAlready);
         }
 
+        /// <summary>
+        /// Insert the users who have edited this page. 
+        /// </summary>
+        /// <param name="conn">connection to use for insertion</param>
         private void BulkInsertUsers(SqlConnection conn)
         {
             // build a unique temporary table name
@@ -224,7 +245,130 @@ namespace WikiReader
             }
         }
 
-        private void BulkInsertRevisions(SqlConnection conn)
+        /// <summary>
+        /// Insert the text of the revisions we're keeping
+        /// </summary>
+        /// <param name="conn">connection to use for insertion</param>
+        private void BulkInsertRevisionText(SqlConnection conn)
+        {
+            // build a unique temporary table name
+            String tempTableName = String.Format("#Text_{0}_{1}", System.Environment.MachineName, Thread.CurrentThread.ManagedThreadId);
+
+            // create that temporary table
+            SqlCommand tableCreate = new SqlCommand(
+                "CREATE TABLE [" + tempTableName + "] (" +
+                "   NamespaceID INT NOT NULL, " +     
+                "	PageID BIGINT NOT NULL," +
+                "	PageRevisionID BIGINT NOT NULL," +
+                "   ArticleText TEXT NOT NULL);", conn);
+            tableCreate.ExecuteNonQuery();
+
+            long bulkActivity = -1;
+
+            try
+            {
+                // bulk insert into the temporary table
+                PageRevisionTextDataReader prtdr = new PageRevisionTextDataReader(_namespaceId, _pageId, revisions.Values);
+                SqlBulkCopy sbc = new SqlBulkCopy(conn);
+
+                bulkActivity = _pump.StartActivity("Bulk Insert Text", _namespaceId, _pageId, prtdr.Count);
+
+                sbc.DestinationTableName = tempTableName;
+                sbc.ColumnMappings.Add(new SqlBulkCopyColumnMapping("PageID", "PageID"));
+                sbc.ColumnMappings.Add(new SqlBulkCopyColumnMapping("NamespaceID", "NamespaceID"));
+                sbc.ColumnMappings.Add(new SqlBulkCopyColumnMapping("PageRevisionID", "PageRevisionID"));
+                sbc.ColumnMappings.Add(new SqlBulkCopyColumnMapping("ArticleText", "ArticleText"));
+                Trace.Assert(conn.State == ConnectionState.Open);
+                sbc.WriteToServer(prtdr);
+                Trace.Assert(conn.State == ConnectionState.Open);
+
+                _pump.CompleteActivity(bulkActivity, null, null);
+                bulkActivity = -1;
+
+                // merge up.
+                SqlException mergeException = null;
+                for (int retries = 10; retries > 0; retries--)
+                {
+                    long mergeActivity = _pump.StartActivity("Merge Text", _namespaceId, _pageId, prtdr.Count);
+                    try
+                    {
+                        SqlCommand tableMerge = new SqlCommand(
+                            "MERGE INTO [PageRevisionText] WITH (HOLDLOCK) " +
+                            "USING [" + tempTableName + "] AS SRC  " +
+                            "   ON [PageRevisionText].NamespaceID = SRC.NamespaceID " +
+                            "  AND [PageRevisionText].PageID = SRC.PageID " +
+                            "  AND [PageRevisionText].PageRevisionID = SRC.PageRevisionID " +
+                            "WHEN NOT MATCHED THEN " +
+                            "INSERT (NamespaceID, PageID, PageRevisionID, ArticleText) VALUES (SRC.NamespaceID, SRC.PageID, SRC.PageRevisionID, SRC.ArticleText);", conn);
+                        _usersAdded = tableMerge.ExecuteNonQuery();
+                        _usersAlready = prtdr.Count - _usersAdded;
+                        mergeException = null;
+                        break;
+                    }
+                    catch (SqlException sex)
+                    {
+                        if (sex.Number == 1205)
+                        {
+                            System.Console.WriteLine("{0}: Deadlock encountered during TEXT merge of {2} rows. Retry {1}",
+                                _pageName, retries, prtdr.Count);
+                            mergeException = sex;
+                            Thread.Sleep(2500);
+                            continue;
+                        }
+                        else if (sex.Number == -2)
+                        {
+                            System.Console.WriteLine("{0}: Timeout encountered during TEXT merge of {2} rows. Retry {1}",
+                                _pageName, retries, prtdr.Count);
+                            mergeException = sex;
+                            Thread.Sleep(2500);
+                            continue;
+                        }
+                        else
+                        {
+                            System.Console.WriteLine("{0}: Exception during TEXT merge of {1} rows. {2}: {3}\n{4}",
+                                _pageName, prtdr.Count,
+                                sex.Number, sex.Source, sex.Message);
+                            throw sex;
+                        }
+                    }
+                    catch (InvalidOperationException ioe)
+                    {
+                        System.Console.WriteLine("{0}: Exception during TEXT merge of {1} rows. {2}\n{3}",
+                            _pageName, prtdr.Count,
+                            ioe.Message, ioe.StackTrace);
+                        throw ioe;
+                    }
+                    finally
+                    {
+                        _pump.CompleteActivity(mergeActivity, _usersAdded, (mergeException == null) ? null : mergeException.Message);
+                    }
+
+                }
+                if (mergeException != null)
+                {
+                    System.Console.WriteLine("{0}: TEXT merge failed 10 times: {1}, {2}\n{3}",
+                        _pageName, mergeException.Number, mergeException.Source, mergeException.Message);
+                    throw mergeException;
+                }
+            }
+            catch (Exception ex)
+            {
+                if (bulkActivity != -1)
+                {
+                    _pump.CompleteActivity(bulkActivity, null, ex.Message);
+                    bulkActivity = -1;
+                }
+            }
+            finally
+            {
+                // drop the temporary table
+                SqlCommand tableDrop = new SqlCommand("DROP TABLE [" + tempTableName + "];", conn);
+                tableDrop.ExecuteNonQuery();
+            }
+        }
+
+
+        private void BulkInsertRevisions(Insertable previous, SqlConnection conn)
         {
             // build a unique temporary table name
             String tempTableName = String.Format("#Revisions_{0}_{1}", System.Environment.MachineName, Thread.CurrentThread.ManagedThreadId);
@@ -240,7 +384,7 @@ namespace WikiReader
                 "   ContributorID BIGINT, " +
                 "   IPAddress VARCHAR(39), " +
                 "   Comment NVARCHAR(255), " +
-                "   ArticleText TEXT, " +
+                "   TextAvailable BIT NOT NULL, " +
                 "   IsMinor BIT NOT NULL, " +
                 "   ArticleTextLength INT NOT NULL, " +
                 "   TextDeleted BIT NOT NULL, " +
@@ -265,12 +409,12 @@ namespace WikiReader
                 sbc.ColumnMappings.Add(new SqlBulkCopyColumnMapping("RevisionWhen", "RevisionWhen"));
                 sbc.ColumnMappings.Add(new SqlBulkCopyColumnMapping("ContributorID", "ContributorID"));
                 sbc.ColumnMappings.Add(new SqlBulkCopyColumnMapping("Comment", "Comment"));
-                sbc.ColumnMappings.Add(new SqlBulkCopyColumnMapping("ArticleText", "ArticleText"));
                 sbc.ColumnMappings.Add(new SqlBulkCopyColumnMapping("IsMinor", "IsMinor"));
                 sbc.ColumnMappings.Add(new SqlBulkCopyColumnMapping("ArticleTextLength", "ArticleTextLength"));
                 sbc.ColumnMappings.Add(new SqlBulkCopyColumnMapping("UserDeleted", "UserDeleted"));
                 sbc.ColumnMappings.Add(new SqlBulkCopyColumnMapping("TextDeleted", "TextDeleted"));
                 sbc.ColumnMappings.Add(new SqlBulkCopyColumnMapping("IPAddress", "IPAddress"));
+                sbc.ColumnMappings.Add(new SqlBulkCopyColumnMapping("TextAvailable", "TextAvailable"));
 
                 Trace.Assert(conn.State == ConnectionState.Open);
                 sbc.WriteToServer(prdr);
@@ -279,7 +423,15 @@ namespace WikiReader
                 _pump.CompleteActivity(bulkActivityID, null, null);
                 bulkActivityID = -1;
 
-                // merge up.
+                // wait until the previous revision is done
+
+                if (previous != null)
+                {
+                    ManualResetEvent mre = previous.GetCompletedEvent();
+                    mre.WaitOne();
+                }
+
+                // merge up!
                 SqlException mergeException = null;
                 for (int retries = 10; retries > 0; retries--)
                 {
@@ -290,17 +442,17 @@ namespace WikiReader
                             "  MERGE INTO [PageRevision] WITH (HOLDLOCK)" +
                             "  USING [" + tempTableName + "] AS SRC " +
                             "     ON [PageRevision].PageRevisionID = SRC.PageRevisionID " +
-                            "	AND [PageRevision].PageID = SRC.PageID " +
-                            "	AND [PageRevision].NamespaceID = SRC.NamespaceID " +
+                            "	 AND [PageRevision].PageID = SRC.PageID " +
+                            "    AND [PageRevision].NamespaceID = SRC.NamespaceID " +
                             "WHEN NOT MATCHED THEN " +
-                            "INSERT (NamespaceID, PageID, PageRevisionID, ParentPageRevisionID, " +
+                            " INSERT (NamespaceID, PageID, PageRevisionID, ParentPageRevisionID, " +
                             "        RevisionWhen, ContributorID, IPAddress, Comment, " +
-                            "		ArticleText, IsMinor, ArticleTextLength, TextDeleted, UserDeleted) " +
-                            "VALUES (SRC.NamespaceID, SRC.PageID, SRC.PageRevisionID, SRC.ParentPageRevisionID, " +
-                            "	SRC.RevisionWhen, SRC.ContributorID, SRC.IPAddress, SRC.Comment, " +
-                            "	SRC.ArticleText, SRC.IsMinor, SRC.ArticleTextLength, SRC.TextDeleted, SRC.UserDeleted);",
+                            "        TextAvailable, IsMinor, ArticleTextLength, TextDeleted, UserDeleted) " +
+                            " VALUES (SRC.NamespaceID, SRC.PageID, SRC.PageRevisionID, SRC.ParentPageRevisionID, " +
+                            "        SRC.RevisionWhen, SRC.ContributorID, SRC.IPAddress, SRC.Comment, " + 
+                            "	     SRC.TextAvailable, SRC.IsMinor, SRC.ArticleTextLength, SRC.TextDeleted, SRC.UserDeleted);",
                             conn);
-                        tableMerge.CommandTimeout = 1800;
+                        tableMerge.CommandTimeout = 3600;
                         _revsAdded = tableMerge.ExecuteNonQuery();
                         _revsAlready = prdr.Count - _revsAdded;
                         mergeException = null;
@@ -362,91 +514,12 @@ namespace WikiReader
             }
             finally
             {
+                // signal the next in the chain of waiters
+                completeEvent.Set();
+
                 // drop the temporary table
                 SqlCommand tableDrop = new SqlCommand("DROP TABLE [" + tempTableName + "];", conn);
                 tableDrop.ExecuteNonQuery();
-            }
-        }
-
-
-        private void InsertRevisions(SqlConnection conn)
-        {
-            SqlCommand cmd = new SqlCommand(
-                "INSERT INTO [PageRevision] (NamespaceID, PageID, PageRevisionID, ParentPageRevisionID, RevisionWhen, ContributorID, " +
-                "   Comment, ArticleText, IsMinor, ArticleTextLength, UserDeleted, TextDeleted, IPAddress) " +
-                " VALUES (@NamespaceID, @PageID, @RevID, @ParentRevID, @RevWhen, @ContributorID, @Comment, " +
-                "       @ArticleText, @IsMinor, @ArticleTextLen, @UserDeleted, @TextDeleted, @IPAddress);", conn);
-
-            foreach (PageRevision pr in revisions.Values)
-            {
-                cmd.Parameters.Clear();
-                cmd.Parameters.AddWithValue("@NamespaceID", _namespaceId);
-                cmd.Parameters.AddWithValue("@PageID", _pageId);
-                cmd.Parameters.AddWithValue("@RevID", pr.revisionId);
-                cmd.Parameters.AddWithValue("@ParentRevId", pr.parentRevisionId);
-                cmd.Parameters.AddWithValue("@RevWhen", pr.timestamp);
-
-                if (pr.Contributor == null)
-                {
-                    // deleted contributor
-                    cmd.Parameters.AddWithValue("@ContributorID", DBNull.Value);
-                    cmd.Parameters.AddWithValue("@IPAddress", DBNull.Value);
-                    cmd.Parameters.AddWithValue("@UserDeleted", true);
-                }
-                else
-                {
-                    cmd.Parameters.AddWithValue("@UserDeleted", false);
-                    if (pr.Contributor.IsAnonymous)
-                    {
-                        cmd.Parameters.AddWithValue("@ContributorID", DBNull.Value);
-                        cmd.Parameters.AddWithValue("@IPAddress", pr.Contributor.IPAddress);
-                    }
-                    else
-                    {
-                        cmd.Parameters.AddWithValue("@ContributorID", pr.Contributor.ID);
-                        cmd.Parameters.AddWithValue("@IPAddress", DBNull.Value);
-                    }
-                }
-
-                if (null == pr.Comment)
-                {
-                    cmd.Parameters.AddWithValue("@Comment", DBNull.Value);
-                }
-                else
-                {
-                    cmd.Parameters.AddWithValue("@Comment", pr.Comment);
-                }
-                cmd.Parameters.AddWithValue("@TextDeleted", pr.TextDeleted);
-
-                if (pr.Text == null)
-                {
-                    cmd.Parameters.AddWithValue("@ArticleText", DBNull.Value);
-                }
-                else
-                {
-                    cmd.Parameters.AddWithValue("@ArticleText", pr.Text);
-                }
-                cmd.Parameters.AddWithValue("@IsMinor", pr.IsMinor);
-                cmd.Parameters.AddWithValue("@ArticleTextLen", pr.TextLength);
-
-                try
-                {
-                    cmd.ExecuteNonQuery();
-                    _revsAdded += 1;
-                    _progress.CompleteRevisions(1);
-                }
-                catch (SqlException sex)
-                {
-                    if (sex.Number == 2601)
-                    {
-                        _revsAlready += 1;
-                        _progress.CompleteRevisions(1);
-                    }
-                    else
-                    {
-                        throw sex;
-                    }
-                }
             }
         }
 

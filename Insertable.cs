@@ -1,12 +1,13 @@
 ﻿using System;
 using System.Data.Sql;
 using System.Data.SqlClient;
+using System.Threading;
 
 namespace WikiReader
 {
     interface Insertable
     {
-        void Insert(DatabasePump pump, SqlConnection conn, InsertableProgress progress);
+        void Insert(Insertable previous, DatabasePump pump, SqlConnection conn, InsertableProgress progress);
 
         String ObjectName
         {
@@ -17,5 +18,7 @@ namespace WikiReader
         {
             get;
         }
+
+        ManualResetEvent GetCompletedEvent();
     }
 }

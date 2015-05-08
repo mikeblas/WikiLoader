@@ -70,6 +70,7 @@
     <Compile Include="NamespaceInfo.cs" />
     <Compile Include="Page.cs" />
     <Compile Include="PageRevision.cs" />
+    <Compile Include="PageRevisionTextDataReader.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="User.cs" />

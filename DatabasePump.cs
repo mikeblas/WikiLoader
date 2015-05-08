@@ -41,15 +41,17 @@ namespace WikiReader
         private class CallerInfo
         {
             public Insertable _i;
+            public Insertable _previous;
             public SqlConnection _conn;
             public InsertableProgress _progress;
             public DatabasePump _pump;
 
-            public CallerInfo(DatabasePump pump, SqlConnection conn, Insertable i, InsertableProgress progress)
+            public CallerInfo(DatabasePump pump, SqlConnection conn, Insertable i, Insertable previous, InsertableProgress progress)
             {
                 _pump = pump;
                 _conn = conn;
                 _i = i;
+                _previous = previous;
                 _progress = progress;
             }
         }
@@ -66,8 +68,9 @@ namespace WikiReader
             // another issue that might be better if we actually do some
             // connection pooling and/or use discrete threads instead of
             // the ThreadPool
-            // get { return "Integrated Security=SSPI;Persist Security Info=False;Initial Catalog=Wikipedia;Data Source=burst;Pooling=false;"; }
             get { return "Integrated Security=SSPI;Persist Security Info=False;Initial Catalog=Wikipedia;Data Source=burst;"; }
+            // get { return "Integrated Security=SSPI;Persist Security Info=False;Initial Catalog=Wikipedia;Data Source=burst;Pooling=false;"; }
+            // get { return "Integrated Security=SSPI;Persist Security Info=False;Initial Catalog=Wikipedia2;Data Source=burst;"; }
         }
 
         /// <summary>
@@ -204,7 +207,7 @@ namespace WikiReader
         /// Add an Insertable that is ready to go to the database.
         /// </summary>
         /// <param name="i">reference to an object implementing Insertable; we'll enqueue it and add it whne we have threads</param>
-        public void Enqueue(Insertable i, ref long running, ref long queued, ref long pendingRevisions )
+        public void Enqueue(Insertable i, Insertable previous, ref long running, ref long queued, ref long pendingRevisions )
         {
             // backpressure
             int pauses = 0;
@@ -235,7 +238,7 @@ namespace WikiReader
             {
                 conn = new SqlConnection(totalConnectionString);
             }
-            catch (ArgumentException ax)
+            catch (ArgumentException)
             {
                 // something wrong, so fall back to a safer string
                 System.Console.WriteLine("Connection failed. Connection string = \"{0}\"", totalConnectionString);
@@ -271,7 +274,7 @@ namespace WikiReader
             }
 
             // create a CallerInfo instance with the Insertable and our connection
-            CallerInfo ci = new CallerInfo(this, conn, i, this);
+            CallerInfo ci = new CallerInfo(this, conn, i, previous, this);
 
             // queue it up! 
             Interlocked.Increment(ref _queued);
@@ -308,7 +311,7 @@ namespace WikiReader
             try
             {
                 // go work the insertion
-                ci._i.Insert(ci._pump, ci._conn, ci._progress);
+                ci._i.Insert(ci._previous, ci._pump, ci._conn, ci._progress);
             }
             finally
             {

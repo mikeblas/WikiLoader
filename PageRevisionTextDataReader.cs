@@ -2,9 +2,10 @@
 using System.Collections.Generic;
 using System.Data;
 
+
 namespace WikiReader
 {
-    class PageRevisionDataReader : IDataReader
+    class PageRevisionTextDataReader  : IDataReader
     {
         // list of PageRevisions this reader will supply
         List<PageRevision> _revisions = new List<PageRevision>();
@@ -16,38 +17,17 @@ namespace WikiReader
         int _namespaceID;
         long _pageID;
 
-        Dictionary<string, int> _columnMap = new Dictionary<string, int>();
-        Dictionary<int, string> _indexMap = new Dictionary<int, string>();
-
-        public PageRevisionDataReader(int namespaceID, long pageID, IList<PageRevision> pages)
+        public PageRevisionTextDataReader(int namespaceID, long pageID, IList<PageRevision> pages)
         {
             _namespaceID = namespaceID;
             _pageID = pageID;
             foreach (PageRevision pr in pages)
             {
-                _revisions.Add(pr);
+                // only consider pages that have text
+                if (pr.Text != null)
+                    _revisions.Add(pr);
             }
 
-            AddColumn("NamespaceID");
-            AddColumn("PageID");
-            AddColumn("PageRevisionID");
-            AddColumn("ParentPageRevisionID");
-            AddColumn("RevisionWhen");
-            AddColumn("ContributorID");
-            AddColumn("Comment");
-            AddColumn("TextAvailable");
-            AddColumn("IsMinor");
-            AddColumn("ArticleTextLength");
-            AddColumn("UserDeleted");
-            AddColumn("TextDeleted");
-            AddColumn("IPAddress");
-        }
-
-        void AddColumn(string columnName)
-        {
-            int index = _columnMap.Count;
-            _columnMap.Add(columnName, index);
-            _indexMap.Add(index, columnName);
         }
 
         public int Count
@@ -99,7 +79,7 @@ namespace WikiReader
 
         int IDataRecord.FieldCount
         {
-            get { return _columnMap.Count; }
+            get { return 4; }
         }
 
         bool IDataRecord.GetBoolean(int i)
@@ -174,122 +154,57 @@ namespace WikiReader
 
         int IDataRecord.GetInt32(int i)
         {
+            if (i == 0)
+                return _namespaceID;
             throw new NotImplementedException();
         }
 
         long IDataRecord.GetInt64(int i)
         {
+            if (i == 2)
+                return _revisions[_currentRevision].revisionId;
+            if (i == 1)
+                return _pageID;
+            if (i == 0)
+                return _namespaceID;
             throw new NotImplementedException();
         }
 
         string IDataRecord.GetName(int i)
         {
-            string name;
-            if (_indexMap.TryGetValue(i, out name))
-            {
-                return name;
-            }
             throw new NotImplementedException();
         }
 
         int IDataRecord.GetOrdinal(string name)
         {
-            int index;
-            if (_columnMap.TryGetValue(name, out index))
+            switch (name)
             {
-                return index;
+                case "NamespaceID": return 0;
+                case "PageID": return 1;
+                case "PageRevisionID": return 2;
+                case "ArticleText": return 3;
             }
-            System.Console.WriteLine("Couldn't find {0}", name);
             throw new NotImplementedException();
         }
 
         string IDataRecord.GetString(int i)
         {
+            if (i == 3)
+                return _revisions[_currentRevision].Text;
             throw new NotImplementedException();
         }
 
         object IDataRecord.GetValue(int i)
         {
-            String columnName;
-
-            if ( ! _indexMap.TryGetValue(i, out columnName) )
-                throw new NotImplementedException();
-
-            string columnNameLower = columnName.ToLower();
-
-            PageRevision record = _revisions[_currentRevision]; 
-
-            switch (columnNameLower)
-            {
-                case "namespaceid":
-                    return _namespaceID;
-
-                case "pageid":
-                    return _pageID;
-
-                case "isminor":
-                    return record.IsMinor;
-
-                case "articletextlength":
-                    return record.TextLength;
-
-                case "textavailable":
-                    return (record.Text != null);
-
-                case "comment":
-                    return record.Comment;
-
-                case "pagerevisionid":
-                    return record.revisionId;
-
-                case "parentpagerevisionid":
-                    return record.parentRevisionId;
-
-                case "revisionwhen":
-                    return record.timestamp;
-
-                case "textdeleted":
-                    return record.TextDeleted;
-
-                case "contributorid":
-                    {
-                        if (record.Contributor == null)
-                        {
-                            return null;
-                        }
-                        else
-                        {
-                            if (record.Contributor.IsAnonymous)
-                                return null;
-                            else
-                                return record.Contributor.ID;
-                        }
-                    }
-
-                case "userdeleted":
-                    if (record.Contributor != null)
-                        return false;
-                    else
-                        return true;
-
-                case "ipaddress":
-                    if (record.Contributor == null)
-                        return null;
-                    else
-                    {
-                        if (record.Contributor.IsAnonymous)
-                            return record.Contributor.IPAddress;
-                        else
-                            return null;
-                    }
-
-
-                default:
-                    System.Console.WriteLine("Need more cases! {0}, {1}", i, columnName);
-                    break;
-            }
-
-            return null;
+            if (i == 3)
+                return _revisions[_currentRevision].Text;
+            if (i == 2)
+                return _revisions[_currentRevision].revisionId;
+            if (i == 1)
+                return _pageID;
+            if (i == 0)
+                return _namespaceID;
+            throw new NotImplementedException();
         }
 
         int IDataRecord.GetValues(object[] values)

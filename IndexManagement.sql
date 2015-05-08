@@ -1,3 +1,4 @@
+USE Wikipedia;
 SET STATISTICS IO ON;
 
 -- Find the average fragmentation percentage of all indexes
@@ -15,16 +16,19 @@ FROM sys.dm_db_index_physical_stats (DB_ID(N'Wikipedia'), OBJECT_ID(N'PageRevisi
 GO
 
 -- fast total rows
-select ST.name, SI.name, SI.rowcnt
+select ST.name, SI.name, SI.rowcnt, SI.dpages * 8 'Data KB', SI.reserved * 8 'Reserved KB', SI.used * 8 'Used KB'
   from sysindexes AS SI 
   JOIN sys.tables AS ST ON ST.object_id = SI.ID;
 
 
+sp_help PageRevision;
 
 ALTER INDEX ALL ON [User]
 REBUILD WITH (FILLFACTOR=80);
 
 ALTER INDEX PageRevision_AK ON [PageRevision] REBUILD;
+
+ALTER INDEX PageRevision_PK ON [PageRevision] REBUILD;
 
 
 -- sp_help PageRevision
