@@ -22,6 +22,11 @@ namespace WikiReader
         String _pageName = null;
 
         /// <summary>
+        /// Name of the page redirected to, if not null
+        /// </summary>
+        String _redirectTitle = null;
+
+        /// <summary>
         /// Namespace which holds that page
         /// </summary>
         int _namespaceId = 0;
@@ -63,11 +68,12 @@ namespace WikiReader
         /// <param name="namespaceId">namespaceId where this page lives</param>
         /// <param name="pageId">pageID for this page</param>
         /// <param name="pageName">name of this page</param>
-        public Page(int namespaceId, Int64 pageId, String pageName)
+        public Page(int namespaceId, Int64 pageId, String pageName, String redirectName)
         {
             _namespaceId = namespaceId;
             _pageName = pageName;
             _pageId = pageId;
+            _redirectTitle = redirectName;
         }
 
         /// <summary>
@@ -530,10 +536,11 @@ namespace WikiReader
         private void InsertPage(SqlConnection conn)
         {
             long activityID = _pump.StartActivity("Insert Page", _namespaceId, _pageId, 1);
-            SqlCommand cmd = new SqlCommand("INSERT INTO [Page] (NamespaceID, PageID, PageName) VALUES (@NamespaceID, @PageID, @PageName);", conn);
+            SqlCommand cmd = new SqlCommand("INSERT INTO [Page] (NamespaceID, PageID, PageName, RedirectTitle) VALUES (@NamespaceID, @PageID, @PageName, @RedirectTitle);", conn);
             cmd.Parameters.AddWithValue("@NamespaceID", _namespaceId);
             cmd.Parameters.AddWithValue("@PageID", _pageId);
             cmd.Parameters.AddWithValue("@PageName", _pageName);
+            cmd.Parameters.AddWithValue("@RedirectTitle", _redirectTitle ?? (object)DBNull.Value);
 
             Exception exResult = null;
             int inserted = 0;
@@ -546,7 +553,21 @@ namespace WikiReader
             catch (SqlException sex)
             {
                 exResult = sex;
-                if (sex.Number != 2601)
+                if (sex.Number == 8152)
+                {
+                    System.Console.WriteLine("Error: page name is too long at {0} characters", _pageName.Length);
+                }
+                else if (sex.Number == 2601)
+                {
+                    // duplicate! we'll do an update instead
+                    cmd = new SqlCommand("UPDATE [Page] SET RedirectTitle = @RedirectTitle WHERE PageID = @PageID AND NamespaceID = @NamespaceID;", conn);
+                    cmd.Parameters.AddWithValue("@NamespaceID", _namespaceId);
+                    cmd.Parameters.AddWithValue("@PageID", _pageId);
+                    cmd.Parameters.AddWithValue("@RedirectTitle", _redirectTitle ?? (object)DBNull.Value);
+
+                    cmd.ExecuteNonQuery();
+                }
+                else
                 {
                     exResult = null;
                     throw sex;

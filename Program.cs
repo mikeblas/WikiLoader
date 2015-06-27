@@ -25,7 +25,7 @@ namespace WikiReader
             // String fileName = @"f:\junk\enwiki-latest-pages-meta-history4.xml-p000066951p000074581";
             // String fileName = @"f:\junk\enwiki-latest-pages-meta-history10.xml-p000925001p000972034";
             // String fileName = @"f:\junk\enwiki-latest-pages-meta-history19.xml-p009225001p009575994";
-            String fileName = @"f:\junk\enwiki-latest-pages-meta-history10.xml-p000925001p000972034";
+            String fileName = @"f:\junk\enwiki-latest-pages-meta-history3.xml-p000039229p000043715";
             if (args.Length >= 1)
                 fileName = args[0];
 
@@ -55,6 +55,7 @@ namespace WikiReader
             XmlReader reader = XmlReader.Create(s, null);
 
             String pageName = null;
+            String redirectTitle = null;
             Int64 revisionId = 0;
             Int64 contributorId = 0;
             Int64 parentRevisionId = 0;
@@ -145,6 +146,10 @@ namespace WikiReader
                         case "title":
                             reader.Read();
                             pageName = reader.Value;
+                            break;
+
+                        case "redirect":
+                            redirectTitle = reader.GetAttribute("title");
                             break;
 
                         case "ns":
@@ -248,7 +253,7 @@ namespace WikiReader
 
                             // write some stats
                             System.Console.WriteLine(
-                                "{0} / {1}: {2:##0.000}\n" +
+                                "{0} / {1}: {2:##0.0000}\n" +
                                 "   Queued {3}: {4} revisions, {5} minor revisions\n" +
                                 "   {6} running, {7} queued, {8} pending revisions",
                                 s.Position, s.Length, (s.Position * 100.0) / s.Length,
@@ -274,6 +279,7 @@ namespace WikiReader
                             revisionCount = 0;
                             minorRevisionCount = 0;
                             pageName = null;
+                            redirectTitle = null;
                             break;
 
                         case "revision":
@@ -314,7 +320,7 @@ namespace WikiReader
                             }
                             else
                             {
-                                Page newPage = new Page(namespaceId, pageId, pageName);
+                                Page newPage = new Page(namespaceId, pageId, pageName, redirectTitle);
                                 newPage.AddRevision(rev);
                                 pageMap.Add(pageName, newPage);
                             }
@@ -326,6 +332,7 @@ namespace WikiReader
                             contributorId = 0;
                             comment.Current = null;
                             articleText.Current = null;
+                            redirectTitle = null;
                             break;
 
                         case "contributor":

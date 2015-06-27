@@ -20,7 +20,6 @@ select ST.name, SI.name, SI.rowcnt, SI.dpages * 8 'Data KB', SI.reserved * 8 'Re
   from sysindexes AS SI 
   JOIN sys.tables AS ST ON ST.object_id = SI.ID;
 
-
 sp_help PageRevision;
 
 ALTER INDEX ALL ON [User]
