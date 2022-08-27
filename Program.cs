@@ -25,7 +25,8 @@ namespace WikiReader
             // String fileName = @"f:\junk\enwiki-latest-pages-meta-history4.xml-p000066951p000074581";
             // String fileName = @"f:\junk\enwiki-latest-pages-meta-history10.xml-p000925001p000972034";
             // String fileName = @"f:\junk\enwiki-latest-pages-meta-history19.xml-p009225001p009575994";
-            String fileName = @"f:\junk\enwiki-latest-pages-meta-history3.xml-p000039229p000043715";
+            // String fileName = @"f:\junk\enwiki-latest-pages-meta-history3.xml-p000039229p000043715";
+            String fileName = @"f:\wiki\20220820\unzipped\enwiki-20220820-stub-meta-history1.xml";
             if (args.Length >= 1)
                 fileName = args[0];
 
@@ -207,15 +208,7 @@ namespace WikiReader
                             }
                             else
                             {
-                                if (null != reader.GetAttribute("deleted"))
-                                {
-                                    // System.Console.WriteLine("Deleted text! RevisionID = {0}", revisionId);
-                                    articleText.Current = null;
-                                }
-                                else
-                                {
-                                    articleText.Current = "";
-                                }
+                                articleText.Current = null;
                             }
                             break;
 
