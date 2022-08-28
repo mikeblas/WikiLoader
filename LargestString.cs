@@ -11,11 +11,11 @@ namespace WikiReader
     /// </summary>
     class LargestString
     {
-        String? _current;
-        String? _largest;
-        readonly String _name;
+        string? _current;
+        string? _largest;
+        readonly string _name;
 
-        public LargestString(String name)
+        public LargestString(string name)
         {
             _name = name;
         }
@@ -26,12 +26,12 @@ namespace WikiReader
             _largest = null;
         }
 
-        public String Name
+        public string Name
         {
             get { return _name; }
         }
 
-        public String? Current
+        public string? Current
         {
             get { return _current; }
             set
@@ -47,10 +47,14 @@ namespace WikiReader
             }
         }
 
-        public String? Largest
+        public string? Largest
         {
             get { return _largest; }
         }
-    }
 
+        public int LargestLength
+        {
+            get { if (_largest == null) return 0; return _largest.Length; } 
+        }
+    }
 }

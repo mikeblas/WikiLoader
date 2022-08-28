@@ -15,7 +15,7 @@ namespace WikiReader
     /// aren't persisted; these are used to show statistics for a run of
     /// the loader.
     /// </summary>
-    class NamespaceInfos : Insertable
+    class NamespaceInfos : IInsertable
     {
         /// <summary>
         /// map of namespace IDs (as integers) to NamespaceInfo objects
@@ -76,7 +76,7 @@ namespace WikiReader
         /// Takes a SqlConnection and inserts the collection into it.
         /// </summary>
         /// <param name="conn">SqlConnection to write into</param>
-        void Insertable.Insert(Insertable previous, DatabasePump pump, SqlConnection conn, InsertableProgress progress)
+        void IInsertable.Insert(IInsertable? previous, DatabasePump pump, SqlConnection conn, InsertableProgress progress)
         {
             // count of rows actually inserted
             int inserts = 0;
@@ -86,7 +86,7 @@ namespace WikiReader
             long activityID = pump.StartActivity("Insert Namespaces", null, null, _namespaceMap.Count);
 
             // command to push a new row into the Namespace table
-            SqlCommand cmd = new SqlCommand("INSERT INTO [Namespace] (NamespaceID, NamespaceName) VALUES ( @ID, @Name );", conn);
+            using var cmd = new SqlCommand("INSERT INTO [Namespace] (NamespaceID, NamespaceName) VALUES ( @ID, @Name );", conn);
 
             // go through the whole collection
             foreach (KeyValuePair<Int64, NamespaceInfo> kvp in _namespaceMap)
@@ -119,16 +119,16 @@ namespace WikiReader
             }
 
             // show our results
-            System.Console.WriteLine("Inserted {0} new namespaces; {1} already known", inserts, already);
+            System.Console.WriteLine($"Inserted {inserts} new namespaces; {already} already known");
             pump.CompleteActivity(activityID, inserts, null);
         }
 
-        String Insertable.ObjectName
+        String IInsertable.ObjectName
         {
             get { return "Namespaces Inserter"; }
         }
 
-        int Insertable.RevisionCount
+        int IInsertable.RevisionCount
         {
             get { return 0; }
         }

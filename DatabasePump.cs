@@ -38,15 +38,15 @@ namespace WikiReader
         /// CallerInfo provides context for an execution. Contains the SqlConnection
         /// and the reference to the Insertable that we're working.
         /// </summary>
-        private class CallerInfo
+        private class CallerInfo : IDisposable
         {
-            public Insertable _i;
-            public Insertable _previous;
+            public IInsertable _i;
+            public IInsertable? _previous;
             public SqlConnection _conn;
             public InsertableProgress _progress;
             public DatabasePump _pump;
 
-            public CallerInfo(DatabasePump pump, SqlConnection conn, Insertable i, Insertable previous, InsertableProgress progress)
+            public CallerInfo(DatabasePump pump, SqlConnection conn, IInsertable i, IInsertable? previous, InsertableProgress progress)
             {
                 _pump = pump;
                 _conn = conn;
@@ -54,13 +54,19 @@ namespace WikiReader
                 _previous = previous;
                 _progress = progress;
             }
+
+            public void Dispose()
+            {
+                _conn.Close();
+                _conn.Dispose();
+            }
         }
 
         /// <summary>
         /// Our connection string. Just in one place here so we don't have to copy
         /// it everywhere.
         /// </summary>
-        private String ConnectionString
+        private static string ConnectionString
         {
             // uses integrated security to my server (named "burst"),
             // and a database named "Wikipedia".
@@ -70,7 +76,6 @@ namespace WikiReader
             // the ThreadPool
             get { return "Integrated Security=SSPI;Persist Security Info=False;Initial Catalog=Wikipedia;Data Source=lake;"; }
             // get { return "Integrated Security=SSPI;Persist Security Info=False;Initial Catalog=Wikipedia;Data Source=lake;Pooling=false;"; }
-            // get { return "Integrated Security=SSPI;Persist Security Info=False;Initial Catalog=Wikipedia2;Data Source=lake;"; }
         }
 
         /// <summary>
@@ -84,47 +89,42 @@ namespace WikiReader
         /// Helper to test that the connection string works. This lets the app
         /// check that it won't just fail when database connections start.
         /// </summary>
-        public void TestConnection()
+        public static void TestConnection()
         {
-            SqlConnection sql = GetConnection();
-            sql.Close();
-            sql.Dispose();
+            using SqlConnection sql = GetConnection();
         }
 
-        public SqlConnection GetConnection()
+        public static SqlConnection GetConnection()
         {
-            SqlConnection sql = new SqlConnection(ConnectionString);
+            var sql = new SqlConnection(ConnectionString);
             sql.Open();
             return sql;
         }
 
-        public void StartRun(String fileName)
+        public void StartRun(string fileName)
         {
-            SqlConnection conn = GetConnection();
+            using SqlConnection conn = GetConnection();
 
-            SqlCommand insertRun = new SqlCommand(
+            using var insertRun = new SqlCommand(
                 "INSERT INTO Run (HostName, ProcID, SourceFileName, SourceFileSize, SourceFileTimestamp, StartTime) " +
                 "VALUES (@HostName, @ProcID, @SourceFileName, @SourceFileSize, @SourceFileTimestamp, GetUTCDate()); " +
                 "SELECT SCOPE_IDENTITY();", conn);
 
             insertRun.Parameters.AddWithValue("@HostName",  Environment.MachineName);
-            insertRun.Parameters.AddWithValue("@ProcID", Process.GetCurrentProcess().Id);
+            insertRun.Parameters.AddWithValue("@ProcID", Environment.ProcessId);
             insertRun.Parameters.AddWithValue("@SourceFileName", fileName);
             insertRun.Parameters.AddWithValue("@SourceFileTimestamp", File.GetLastWriteTimeUtc(fileName));
             insertRun.Parameters.AddWithValue("@SourceFileSize", new System.IO.FileInfo(fileName).Length);
             Decimal d = (Decimal) insertRun.ExecuteScalar();
 
             _runID = (long)d;
-
-            conn.Close();
-            conn.Dispose();
         }
 
         public void CompleteRun(string strResult)
         {
-            SqlConnection conn = GetConnection();
+            using var conn = GetConnection();
 
-            SqlCommand updateRun = new SqlCommand(
+            using var updateRun = new SqlCommand(
                 "UPDATE Run " +
                 "   SET EndTime = GetUTCDate(), " +
                 "       Result = @Result" + 
@@ -137,26 +137,23 @@ namespace WikiReader
             }
             else
             {
-                String str = strResult.Substring(0, Math.Min(strResult.Length, 1024));
+                string str = strResult.Substring(0, Math.Min(strResult.Length, 1024));
                 updateRun.Parameters.AddWithValue("@Result", str);
             }
             updateRun.ExecuteNonQuery();
-
-            conn.Close();
-            conn.Dispose();
         }
 
-        public long StartActivity(String activityName, int? namespaceID, long? pageID, long? workCount)
+        public long StartActivity(string activityName, int? namespaceID, long? pageID, long? workCount)
         {
-            SqlConnection conn = GetConnection();
+            using var conn = GetConnection();
 
-            SqlCommand insertActivity = new SqlCommand(
+            using var insertActivity = new SqlCommand(
                 "INSERT INTO Activity (RunID, ThreadID, Activity, StartTime, TargetNamespace, TargetPageID, WorkCount) " +
                 "VALUES (@RunID, @ThreadID, @Activity, GetUTCDate(), @TargetNamespace, @TargetPageID, @WorkCount); " +
                 "SELECT SCOPE_IDENTITY();", conn);
 
             insertActivity.Parameters.AddWithValue("@RunID", _runID);
-            insertActivity.Parameters.AddWithValue("@ThreadID", Thread.CurrentThread.ManagedThreadId);
+            insertActivity.Parameters.AddWithValue("@ThreadID", Environment.CurrentManagedThreadId);
             insertActivity.Parameters.AddWithValue("@Activity", activityName);
             insertActivity.Parameters.AddWithValue("@TargetNamespace", namespaceID ?? SqlInt32.Null);
             insertActivity.Parameters.AddWithValue("@TargetPageID", pageID ?? SqlInt64.Null);
@@ -164,17 +161,15 @@ namespace WikiReader
             Decimal d = (Decimal)insertActivity.ExecuteScalar();
 
             long activityID = (long)d;
-            conn.Close();
-            conn.Dispose();
 
             return activityID;
         }
 
-        public void CompleteActivity(long activityID, long? completedCount, string result)
+        public void CompleteActivity(long activityID, long? completedCount, string? result)
         {
-            SqlConnection conn = GetConnection();
+            using var conn = GetConnection();
 
-            SqlCommand completeActivity = new SqlCommand(
+            using var  completeActivity = new SqlCommand(
                 "UPDATE Activity " +
                 "   SET EndTime = GetUTCDate(), " +
                 "       CompletedCount = @CompletedCount, " +
@@ -192,13 +187,11 @@ namespace WikiReader
             }
             else
             {
-                String str = result.Substring(0, Math.Min(result.Length, 1024));
+                string str = result.Substring(0, Math.Min(result.Length, 1024));
                 completeActivity.Parameters.AddWithValue("@Result", str);
             }
 
             completeActivity.ExecuteNonQuery();
-            conn.Close();
-            conn.Dispose();
 
             return;
         }
@@ -207,33 +200,21 @@ namespace WikiReader
         /// Add an Insertable that is ready to go to the database.
         /// </summary>
         /// <param name="i">reference to an object implementing Insertable; we'll enqueue it and add it whne we have threads</param>
-        public void Enqueue(Insertable i, Insertable previous, ref long running, ref long queued, ref long pendingRevisions )
+        public void Enqueue(IInsertable i, IInsertable? previous, ref long running, ref long queued, ref long pendingRevisions )
         {
             // backpressure
             int pauses = 0;
             while (Interlocked.Read(ref _running) >= 5 || Interlocked.Read(ref _queued) >= 100)
             {
                 if (pauses++ % 10 == 0)
-                {
-                    System.Console.WriteLine("Backpressure: {0} running, {1} queued, {2} pending revisions",
-                        Interlocked.Read(ref _running),
-                        Interlocked.Read(ref _queued),
-                        _pendingRevisions);
-                }
+                    System.Console.WriteLine($"Backpressure: {Interlocked.Read(ref _running)} running, {Interlocked.Read(ref _queued)} queued, {_pendingRevisions} pending revisions");
                 Thread.Sleep(100);
             }
 
-            // get a new connection
-            // use the object name as the "application name",
-            // but that name can't have semicolons and can't
-            // be more than 128 characters. We also strip equals
-            // signs to reduce attack surface area. Can't have
-            // quotes or apostrophies, either.
-            String appNameRaw = i.ObjectName.Replace(";", "").Replace("=", "").Replace("\"", "").Replace("'", "");
-            String appNameTrimmed = appNameRaw.Substring(0, Math.Min(appNameRaw.Length, 100));
-            String totalConnectionString = ConnectionString + "Application Name=" + appNameTrimmed + ";";
+            // get a new connection; use an ApplicationName parameter to indicate who we are
+            string totalConnectionString = $"{ConnectionString};Application Name=WikiLoader{Environment.CurrentManagedThreadId};";
 
-            SqlConnection conn = null;
+            SqlConnection? conn = null;
             try
             {
                 conn = new SqlConnection(totalConnectionString);
@@ -241,7 +222,7 @@ namespace WikiReader
             catch (ArgumentException)
             {
                 // something wrong, so fall back to a safer string
-                System.Console.WriteLine("Connection failed. Connection string = \"{0}\"", totalConnectionString);
+                System.Console.WriteLine($"Connection failed. Connection string = \"{totalConnectionString}\"");
                 conn = new SqlConnection(ConnectionString);
             }
            
@@ -257,8 +238,7 @@ namespace WikiReader
                     // connection exception?
                     if (sex.Number == 64 && sex.Source == ".Net SqlClient Data Provider")
                     {
-                        System.Console.WriteLine("{0}: {1}, {2}\nTrying again ({3} retries left)",
-                            sex.Source, sex.Number, sex.Message, retries);
+                        System.Console.WriteLine($"{sex.Source}: {sex.Number}, {sex.Message}\nTrying again ({retries} retries left)");
                         Thread.Sleep(1000);
                         continue;
                     }
@@ -269,16 +249,15 @@ namespace WikiReader
             }
 
             if (conn.State != ConnectionState.Open)
-            {
                 throw new Exception("Couldn't connect");
-            }
 
             // create a CallerInfo instance with the Insertable and our connection
-            CallerInfo ci = new CallerInfo(this, conn, i, previous, this);
+            // disposable connection object is now owned by CallerInfo object
+            CallerInfo ci = new(this, conn, i, previous, this);
 
             // queue it up! 
             Interlocked.Increment(ref _queued);
-            ThreadPool.QueueUserWorkItem(new WaitCallback(caller), ci);
+            ThreadPool.QueueUserWorkItem(new WaitCallback(WorkCallback), ci);
 
             // return our current running count. This might
             // not have incremented just yet, but this is a convenient 
@@ -296,17 +275,19 @@ namespace WikiReader
         /// accounting, and then makes the call.
         /// </summary>
         /// <param name="obj">CallerInfo object to work</param>
-        private static void caller(Object obj)
+        private static void WorkCallback(object? obj)
         {
+            if (obj == null)
+                throw new InvalidOperationException("thread work item can't be null");
+
             // cast the generic object to our CallerInfo
-            CallerInfo ci = (CallerInfo)obj;
+            using CallerInfo ci = (CallerInfo)obj;
 
             // remove from the queued count
             Interlocked.Decrement(ref _queued);
 
             // add to the running count
             Interlocked.Increment( ref _running );
-
 
             try
             {
@@ -315,10 +296,7 @@ namespace WikiReader
             }
             finally
             {
-                // clean up the connection
-                // and decrement our running count
-                ci._conn.Close();
-                ci._conn.Dispose();
+                // decrement our running count
                 Interlocked.Decrement(ref _running);
             }
         }
@@ -327,7 +305,7 @@ namespace WikiReader
         {
             while (_running > 0)
             {
-                System.Console.WriteLine("{0} still running, {1} queued, {2} pending revisions", _running, _queued, _pendingRevisions);
+                System.Console.WriteLine($"{_running} still running, {_queued} queued, {_pendingRevisions} pending revisions");
                 Thread.Sleep(1000);
             }
             return;

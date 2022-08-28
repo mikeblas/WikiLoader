@@ -4,6 +4,7 @@ using System.Text;
 using System.Threading.Tasks;
 using System.Xml;
 using System.IO;
+using System.Diagnostics;
 
 // https://en.wikipedia.org/wiki/Wikipedia:Database_download#XML_schema
 
@@ -11,27 +12,27 @@ namespace WikiReader
 {
     class Program
     {
-        DatabasePump _pump;
+        readonly DatabasePump _pump;
 
         Program()
         {
             _pump = new DatabasePump();
-            _pump.TestConnection();
+            DatabasePump.TestConnection();
         }
 
         static void Main(string[] args)
         {
-            // String fileName = @"C:\Junk\enwiki-latest-pages-meta-history1.xml-p000000010p000002933";
-            // String fileName = @"f:\junk\enwiki-latest-pages-meta-history4.xml-p000066951p000074581";
-            // String fileName = @"f:\junk\enwiki-latest-pages-meta-history10.xml-p000925001p000972034";
-            // String fileName = @"f:\junk\enwiki-latest-pages-meta-history19.xml-p009225001p009575994";
-            // String fileName = @"f:\junk\enwiki-latest-pages-meta-history3.xml-p000039229p000043715";
-            String fileName = @"f:\wiki\20220820\unzipped\enwiki-20220820-stub-meta-history1.xml";
+            // string fileName = @"C:\Junk\enwiki-latest-pages-meta-history1.xml-p000000010p000002933";
+            // string fileName = @"f:\junk\enwiki-latest-pages-meta-history4.xml-p000066951p000074581";
+            // string fileName = @"f:\junk\enwiki-latest-pages-meta-history10.xml-p000925001p000972034";
+            // string fileName = @"f:\junk\enwiki-latest-pages-meta-history19.xml-p009225001p009575994";
+            // string fileName = @"f:\junk\enwiki-latest-pages-meta-history3.xml-p000039229p000043715";
+            string fileName = @"f:\wiki\20220820\unzipped\enwiki-20220820-stub-meta-history3.xml";
             if (args.Length >= 1)
                 fileName = args[0];
 
-            Program p = new Program();
-            String strResult = null;
+            Program p = new();
+            string strResult = "Unknown exception!";
             try
             {
                 p._pump.StartRun(fileName);
@@ -41,7 +42,7 @@ namespace WikiReader
             catch (Exception x)
             {
                 strResult = x.Message;
-                throw x;
+                throw;
             }
             finally
             {
@@ -50,25 +51,25 @@ namespace WikiReader
         }
 
 
-        void Parse(String fileName)
+        void Parse(string fileName)
         {
             FileStream s = File.OpenRead(fileName);
             XmlReader reader = XmlReader.Create(s, null);
 
-            String pageName = null;
-            String redirectTitle = null;
+            string? pageName = null;
+            string? redirectTitle = null;
             Int64 revisionId = 0;
             Int64 contributorId = 0;
             Int64 parentRevisionId = 0;
-            LargestString contributorIp = new LargestString("contributorIp");
+            LargestString contributorIp = new("contributorIp");
             int namespaceId = 0;
             int pageId = 0;
             Boolean inRevision = false;
             Boolean inContributor = false;
             DateTime timestamp = DateTime.MinValue;
-            LargestString comment = new LargestString("Comment");
-            LargestString articleText = new LargestString("ArticleText");
-            String contributorUserName = null;
+            LargestString comment = new("Comment");
+            LargestString articleText = new("ArticleText");
+            string? contributorUserName = null;
             int revisionCount = 0;
             int minorRevisionCount = 0;
             int totalPages = 0;
@@ -78,17 +79,17 @@ namespace WikiReader
             bool sawMinor = false;
 
             // dictionary from string of user name to user ID
-            Dictionary<String, int> contributorMap = new Dictionary<String, int>();
+            Dictionary<string, int> contributorMap = new();
 
             // dictionary from page names to Page objects
             // note that page objects internally contain a list of revisions
-            Dictionary<String, Page> pageMap = new Dictionary<String, Page>();
+            Dictionary<string, Page> pageMap = new();
 
             // dictionary from namespace ID to namespace string
-            NamespaceInfos namespaceMap = new NamespaceInfos();
+            NamespaceInfos namespaceMap = new();
 
             long currentActivity = -1;
-            Page previousPage = null;
+            Page? previousPage = null;
 
             while (reader.Read())
             {
@@ -102,10 +103,12 @@ namespace WikiReader
                             break;
 
                         case "namespace":
-                            int key = Int32.Parse(reader["key"]);
+                            string? keystring = reader["key"];
+                            Debug.Assert(keystring != null, "Expected key in namespace tag");
+                            int key = Int32.Parse(keystring);
                             reader.Read();
-                            String namespaceName = reader.Value;
-                            // Console.WriteLine("{0}: {1}", key, namespaceName);
+                            string namespaceName = reader.Value;
+                            // Console.WriteLine($"{key}: {namespaceName}");
                             namespaceMap.Add( new NamespaceInfo( namespaceName, key ) );
                             break;
 
@@ -164,9 +167,7 @@ namespace WikiReader
                             // by this point, everything we need to know about a page should be set
                             // start an action for this page, then, if we don't have one already flying
                             if (currentActivity == -1)
-                            {
                                 currentActivity = _pump.StartActivity("Read Page", namespaceId, pageId, null);
-                            }
                             break;
 
                         case "contributor":
@@ -178,9 +179,9 @@ namespace WikiReader
                             }
                             else
                             {
-                                String str = reader.GetAttribute("deleted");
                                 contributorUserName = null;
-                                // System.Console.WriteLine("Empty element! RevisionID = {1}, Attribute = {0}", str, revisionId);
+                                // String str = reader.GetAttribute("deleted");
+                                // System.Console.WriteLine($"Empty element! RevisionID = {revisionId}, Attribute = {str}");
                             }
                             break;
 
@@ -197,12 +198,12 @@ namespace WikiReader
                                 catch (OutOfMemoryException oom)
                                 {
                                     if ( articleText.Current != null )
-                                        System.Console.WriteLine("articleText == {0}", articleText.Current.Length);
+                                        System.Console.WriteLine($"articleText == {articleText.Current.Length}");
                                     else
                                         System.Console.WriteLine("articleText == is null");
-                                    System.Console.WriteLine("revisionID == {0}", revisionId);
-                                    System.Console.WriteLine("reader == {0}", reader.Value.Length);
-                                    System.Console.WriteLine("timestamp == {0}", timestamp);
+                                    System.Console.WriteLine($"revisionID == {revisionId}");
+                                    System.Console.WriteLine($"reader == {reader.Value.Length}");
+                                    System.Console.WriteLine($"timestamp == {timestamp}");
                                     throw oom;
                                 }
                             }
@@ -222,7 +223,7 @@ namespace WikiReader
                             }
                             else
                             {
-                                // System.Console.WriteLine("Deleted comment! RevisionID = {0}",  revisionId);
+                                // System.Console.WriteLine($"Deleted comment! RevisionID = {revisionId}");
                                 comment.Current = null;
                             }
                             break;
@@ -234,6 +235,8 @@ namespace WikiReader
                     switch (reader.Name)
                     {
                         case "page":
+                            Debug.Assert(pageName != null, "Must have valuid page name by now");
+
                             // grab a copy of the page
                             // clean it up and push it to the pump
                             Page page = pageMap[pageName];
@@ -246,12 +249,9 @@ namespace WikiReader
 
                             // write some stats
                             System.Console.WriteLine(
-                                "{0} / {1}: {2:##0.0000}\n" +
-                                "   Queued {3}: {4} revisions, {5} minor revisions\n" +
-                                "   {6} running, {7} queued, {8} pending revisions",
-                                s.Position, s.Length, (s.Position * 100.0) / s.Length,
-                                pageName, revisionCount, minorRevisionCount,
-                                running, queued, pendingRevisions);
+                                $"{s.Position} / {s.Length}: {(s.Position * 100.0) / s.Length:##0.0000}\n" +
+                                $"   Queued {pageName}: {revisionCount} revisions, {minorRevisionCount} minor revisions\n" +
+                                $"   {running} running, {queued} queued, {pendingRevisions} pending revisions");
 
                             // tally our stats
                             totalRevisions += revisionCount;
@@ -276,17 +276,21 @@ namespace WikiReader
                             break;
 
                         case "revision":
+
+                            if (pageName == null)
+                                throw new InvalidOperationException("Expected valid page name when processing revision");
+
                             // System.Console.WriteLine(" {0}: {1}, {2}, {3}", pageName, revisionId, timestamp, articleText.Length );
                             // System.Console.WriteLine(" {0}: ", contributorUserName, comment);
                             revisionCount += 1;
 
                             if (revisionCount % 1000 == 0)
-                                System.Console.WriteLine(" {0}: read {1} revisions", pageName, revisionCount);
+                                System.Console.WriteLine($" {pageName}: read {revisionCount} revisions");
 
                             if (sawMinor)
                                 minorRevisionCount += 1;
 
-                            User contributor = null;
+                            User? contributor = null;
                             if (contributorId == 0 && contributorUserName == null)
                             {
                                 if (contributorIp.Current == null)
@@ -306,14 +310,14 @@ namespace WikiReader
                                     contributor = new User(contributorId, contributorUserName);
                             }
                             
-                            PageRevision rev = new PageRevision(parentRevisionId, revisionId, timestamp, contributor, comment.Current, articleText.Current, sawMinor);
+                            var rev = new PageRevision(parentRevisionId, revisionId, timestamp, contributor, comment.Current, articleText.Current, sawMinor);
                             if (pageMap.ContainsKey(pageName))
                             {
                                 pageMap[pageName].AddRevision(rev);
                             }
                             else
                             {
-                                Page newPage = new Page(namespaceId, pageId, pageName, redirectTitle);
+                                Page newPage = new(namespaceId, pageId, pageName, redirectTitle);
                                 newPage.AddRevision(rev);
                                 pageMap.Add(pageName, newPage);
                             }
@@ -329,24 +333,22 @@ namespace WikiReader
                             break;
 
                         case "contributor":
-                            // System.Console.WriteLine("inContributor == {0}", inContributor);
+                            // System.Console.WriteLine($"inContributor == {inContributor}");
                             inContributor = false;
                             if (contributorIp.Current == null)
                             {
+                                if (contributorUserName == null)
+                                    throw new InvalidOperationException("Can't have null contributor IP and null contributor User Name");
                                 //REVIEW: how to handle anonymous edits?
                                 if (contributorMap.ContainsKey(contributorUserName))
-                                {
                                     contributorMap[contributorUserName] += 1;
-                                }
                                 else
-                                {
                                     contributorMap.Add(contributorUserName, 1);
-                                }
                             }
                             break;
 
                         case "namespaces":
-                            System.Console.WriteLine("Read {0} namespaces", namespaceMap.Count );
+                            System.Console.WriteLine($"Read {namespaceMap.Count} namespaces");
                             running = 0;
                             queued = 0;
                             pendingRevisions = 0;
@@ -361,21 +363,16 @@ namespace WikiReader
             _pump.WaitForComplete();
 
             // done, spew stats!
-            System.Console.WriteLine("{0} total pages read, {1} inserted", totalPages, _pump.getInsertedPages());
-            System.Console.WriteLine("{0} total revisions", totalRevisions);
-            System.Console.WriteLine("{0} total minor revisions", totalMinorRevisions);
-            System.Console.WriteLine("{0} distinct contributors", contributorMap.Count);
+            System.Console.WriteLine($"{totalPages} total pages read, {_pump.getInsertedPages()} inserted");
+            System.Console.WriteLine($"{totalRevisions} total revisions");
+            System.Console.WriteLine($"{totalMinorRevisions} total minor revisions");
+            System.Console.WriteLine($"{contributorMap.Count} distinct contributors");
 
-            System.Console.WriteLine("Longest comment is {0}: {1}", comment.Largest.Length, comment.Largest);
-            System.Console.WriteLine("Longest text is {0}", articleText.Largest.Length );
+            System.Console.WriteLine($"Longest comment is {comment.LargestLength}: {comment.Largest}");
+            System.Console.WriteLine($"Longest text is {articleText.LargestLength}");
 
             foreach (NamespaceInfo ns in namespaceMap.Values)
-            {
-                System.Console.WriteLine("{0},{1}", ns.PageCount, ns.Name);
-            }
-
+                System.Console.WriteLine($"{ns.PageCount},{ns.Name}");
         }
     }
 }
-
-

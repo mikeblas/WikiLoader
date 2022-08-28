@@ -14,18 +14,18 @@ namespace WikiReader
     /// </summary>
     class PageRevision
     {
-        Int64 _parentRevisionId = 0;
-        Int64 _revisionId = 0;
-        DateTime _timestamp = DateTime.MinValue;
-        User _contributor = null;
-        String _comment = null;
-        String _text = null;
+        readonly Int64 _parentRevisionId = 0;
+        readonly Int64 _revisionId = 0;
+        readonly DateTime _timestamp = DateTime.MinValue;
+        readonly User? _contributor = null;
+        string? _comment = null;
+        string? _text = null;
         int _textLength = 0;
-        bool _minor = false;
-        bool _commentDeleted = false;
-        bool _textDeleted = false;
+        readonly bool _minor = false;
+        readonly bool _commentDeleted = false;
+        readonly bool _textDeleted = false;
 
-        public PageRevision(Int64 parentRevisionId, Int64 revisionId, DateTime timestamp, User contributor, String comment, String text, bool minor)
+        public PageRevision(Int64 parentRevisionId, Int64 revisionId, DateTime timestamp, User? contributor, string? comment, string? text, bool minor)
         {
             _parentRevisionId = parentRevisionId;
             _revisionId = revisionId;
@@ -46,27 +46,27 @@ namespace WikiReader
             _minor = minor;
         }
 
-        public Int64 revisionId
+        public Int64 RevisionId
         {
             get { return _revisionId; }
         }
 
-        public Int64 parentRevisionId
+        public Int64 ParentRevisionId
         {
             get { return _parentRevisionId; }
         }
 
-        public User Contributor
+        public User? Contributor
         {
             get { return _contributor; }
         }
 
-        public DateTime timestamp
+        public DateTime TimeStamp
         {
             get { return _timestamp; }
         }
 
-        public String Comment
+        public string? Comment
         {
             get { return _comment; }
             set { _comment = value; }
@@ -82,13 +82,13 @@ namespace WikiReader
             get { return _textDeleted; }
         }
 
-        public String Text
+        public string? Text
         {
             get { return _text; }
             set
             {
                 _text = value;
-                if (value != null) _textLength = _text.Length;
+                if (_text!= null) _textLength = _text.Length;
             }
         }
 

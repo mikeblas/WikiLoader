@@ -7,7 +7,7 @@ namespace WikiReader
     internal class UserDataReader : IDataReader
     {
         // list of users this reader will supply
-        List<User> _contributors = new List<User>();
+        readonly List<User> _contributors = new();
 
         /// <summary>
         /// What user would be next read?
@@ -118,7 +118,7 @@ namespace WikiReader
             throw new NotImplementedException();
         }
 
-        long IDataRecord.GetBytes(int i, long fieldOffset, byte[] buffer, int bufferoffset, int length)
+        long IDataRecord.GetBytes(int i, long fieldOffset, byte[]? buffer, int bufferoffset, int length)
         {
             throw new NotImplementedException();
         }
@@ -128,7 +128,7 @@ namespace WikiReader
             throw new NotImplementedException();
         }
 
-        long IDataRecord.GetChars(int i, long fieldoffset, char[] buffer, int bufferoffset, int length)
+        long IDataRecord.GetChars(int i, long fieldoffset, char[]? buffer, int bufferoffset, int length)
         {
             throw new NotImplementedException();
         }
@@ -207,15 +207,21 @@ namespace WikiReader
 
         string IDataRecord.GetString(int i)
         {
-            if (i == 1)
-                return _contributors[_currentUser].Name;
-            throw new NotImplementedException();
+            string? s = _contributors[_currentUser].Name;
+            if (s == null)
+                throw new InvalidOperationException("null GetString");
+            return s;
         }
 
         object IDataRecord.GetValue(int i)
         {
             if (i == 1)
-                return _contributors[_currentUser].Name;
+            {
+                string? s = _contributors[_currentUser].Name;
+                if (s == null)
+                    throw new InvalidOperationException("Null name");
+                return s;
+            }
             if (i == 0)
                 return _contributors[_currentUser].ID;
             throw new NotImplementedException();

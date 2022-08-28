@@ -14,17 +14,17 @@ namespace WikiReader
     /// and the pageID. It contains a list of zero or more revisions of the page,
     /// each an instance of the PageRevision class.
     /// </summary>
-    class Page : Insertable
+    class Page : IInsertable
     {
         /// <summary>
         /// Name of the page we represent
         /// </summary>
-        String _pageName = null;
+        string _pageName;
 
         /// <summary>
         /// Name of the page redirected to, if not null
         /// </summary>
-        String _redirectTitle = null;
+        string? _redirectTitle;
 
         /// <summary>
         /// Namespace which holds that page
@@ -36,11 +36,7 @@ namespace WikiReader
         /// </summary>
         Int64 _pageId = 0;
 
-        InsertableProgress _progress;
-
-        DatabasePump _pump;
-
-        ManualResetEvent completeEvent = new ManualResetEvent(false);
+        ManualResetEvent completeEvent = new(false);
 
         public ManualResetEvent GetCompletedEvent()
         {
@@ -68,7 +64,7 @@ namespace WikiReader
         /// <param name="namespaceId">namespaceId where this page lives</param>
         /// <param name="pageId">pageID for this page</param>
         /// <param name="pageName">name of this page</param>
-        public Page(int namespaceId, Int64 pageId, String pageName, String redirectName)
+        public Page(int namespaceId, Int64 pageId, string pageName, string? redirectName)
         {
             _namespaceId = namespaceId;
             _pageName = pageName;
@@ -82,15 +78,13 @@ namespace WikiReader
         /// <param name="pr"></param>
         public void AddRevision(PageRevision pr)
         {
-            if (revisions.ContainsKey(pr.revisionId))
+            if (revisions.ContainsKey(pr.RevisionId))
             {
-                System.Console.WriteLine("Page {0} already has revision {1}", _pageName, pr.revisionId);
-                System.Console.WriteLine("current: {0} with id {1}, parent id {2}",
-                    revisions[pr.revisionId].timestamp, revisions[pr.revisionId].revisionId, revisions[pr.revisionId].parentRevisionId);
-                System.Console.WriteLine("    new: {0} with id {1}, parent id {2}",
-                    pr.timestamp, pr.revisionId, pr.parentRevisionId);
+                System.Console.WriteLine($"Page {_pageName} already has revision {pr.RevisionId}");
+                System.Console.WriteLine($"current: {revisions[pr.RevisionId].TimeStamp} with id {revisions[pr.RevisionId].RevisionId}, parent id {revisions[pr.RevisionId].ParentRevisionId}");
+                System.Console.WriteLine($"    new: {pr.TimeStamp} with id {pr.RevisionId}, parent id {pr.ParentRevisionId}");
             }
-            revisions.Add(pr.revisionId, pr);
+            revisions.Add(pr.RevisionId, pr);
 
             // always keep first and last revisions
             // keep every 100th revision
@@ -109,45 +103,40 @@ namespace WikiReader
         /// <param name="pump"></param>
         /// <param name="conn">connection to use for insertion</param>
         /// <param name="progress">InsertableProgress interface for progress callbacks</param>
-        public void Insert(Insertable previous, DatabasePump pump, SqlConnection conn, InsertableProgress progress)
+        public void Insert(IInsertable? previous, DatabasePump pump, SqlConnection conn, InsertableProgress progress)
         {
-            _pump = pump;
-            _progress = progress;
-            _progress.AddPendingRevisions(revisions.Count);
+            progress.AddPendingRevisions(revisions.Count);
 
             // first, insert all the users
-            BulkInsertUsers(conn);
+            BulkInsertUsers(pump, conn);
 
             // then, insert the revisions
-            BulkInsertRevisions(previous, conn);
+            BulkInsertRevisions(pump, progress, previous, conn);
 
             // insert the text that we have
-            BulkInsertRevisionText(conn);
+            BulkInsertRevisionText(pump, conn);
 
             // finally, insert the page record itself
-            InsertPage(conn);
+            InsertPage(pump, progress, conn);
 
             System.Console.WriteLine(
-                "{0}\n" +
-                "   {1} revisions added, {2} revisions exist\n" +
-                "   {3} users added, {4} users exist", 
-                _pageName,
-                _revsAdded, _revsAlready,
-                _usersAdded, _usersAlready);
+                $"{_pageName}\n" +
+                $"   {_revsAdded} revisions added, {_revsAlready} revisions exist\n" +
+                $"   {_usersAdded} users added, {_usersAlready} users exist");
         }
 
         /// <summary>
         /// Insert the users who have edited this page. 
         /// </summary>
         /// <param name="conn">connection to use for insertion</param>
-        private void BulkInsertUsers(SqlConnection conn)
+        private void BulkInsertUsers(DatabasePump pump, SqlConnection conn)
         {
             // build a unique temporary table name
-            String tempTableName = String.Format("#Users_{0}_{1}", System.Environment.MachineName, Thread.CurrentThread.ManagedThreadId);
+            string tempTableName = $"#Users_{System.Environment.MachineName}_{Environment.CurrentManagedThreadId}";
 
             // create that temporary table
-            SqlCommand tableCreate = new SqlCommand(
-                "CREATE TABLE [" + tempTableName + "] (" +
+            using var tableCreate = new SqlCommand(
+                $"CREATE TABLE [{tempTableName}] (" +
                 "	UserID BIGINT NOT NULL," +
                 "	UserName NVARCHAR(128) COLLATE SQL_Latin1_General_CP1_CS_AS NOT NULL );", conn);
             tableCreate.ExecuteNonQuery();
@@ -157,10 +146,10 @@ namespace WikiReader
             try
             {
                 // bulk insert into the temporary table
-                UserDataReader udr = new UserDataReader(_insertedUserSet, revisions.Values);
-                SqlBulkCopy sbc = new SqlBulkCopy(conn);
+                UserDataReader udr = new(_insertedUserSet, revisions.Values);
+                SqlBulkCopy sbc = new(conn);
 
-                bulkActivity = _pump.StartActivity("Bulk Insert Users", _namespaceId, _pageId, udr.Count);
+                bulkActivity = pump.StartActivity("Bulk Insert Users", _namespaceId, _pageId, udr.Count);
 
                 sbc.DestinationTableName = tempTableName;
                 sbc.ColumnMappings.Add(new SqlBulkCopyColumnMapping("UserID", "UserID"));
@@ -169,19 +158,19 @@ namespace WikiReader
                 sbc.WriteToServer(udr);
                 Trace.Assert(conn.State == ConnectionState.Open);
 
-                _pump.CompleteActivity(bulkActivity, null, null);
+                pump.CompleteActivity(bulkActivity, null, null);
                 bulkActivity = -1;
 
                 // merge up.
-                SqlException mergeException = null;
+                SqlException? mergeException = null;
                 for (int retries = 10; retries > 0; retries--)
                 {
-                    long mergeActivity = _pump.StartActivity("Merge Users", _namespaceId, _pageId, udr.Count);
+                    long mergeActivity = pump.StartActivity("Merge Users", _namespaceId, _pageId, udr.Count);
                     try
                     {
-                        SqlCommand tableMerge = new SqlCommand(
+                        using var tableMerge = new SqlCommand(
                             "MERGE INTO [User] WITH (HOLDLOCK) " +
-                            "USING [" + tempTableName + "] AS SRC ON [User].UserID = SRC.UserID " +
+                            $"USING [{tempTableName}] AS SRC ON [User].UserID = SRC.UserID " +
                             "WHEN NOT MATCHED THEN " +
                             " INSERT (UserID, UserName) VALUES (SRC.UserID, SRC.UserName);", conn);
                         _usersAdded = tableMerge.ExecuteNonQuery();
@@ -193,45 +182,38 @@ namespace WikiReader
                     {
                         if (sex.Number == 1205)
                         {
-                            System.Console.WriteLine("{0}: Deadlock encountered during USER merge of {2} rows. Retry {1}",
-                                _pageName, retries, udr.Count);
+                            System.Console.WriteLine($"{_pageName}: Deadlock encountered during USER merge of {udr.Count} rows. Retry {retries}");
                             mergeException = sex;
                             Thread.Sleep(2500);
                             continue;
                         }
                         else if (sex.Number == -2)
                         {
-                            System.Console.WriteLine("{0}: Timeout encountered during USER merge of {2} rows. Retry {1}",
-                                _pageName, retries, udr.Count);
+                            System.Console.WriteLine($"{_pageName}: Timeout encountered during USER merge of {udr.Count} rows. Retry {retries}");
                             mergeException = sex;
                             Thread.Sleep(2500);
                             continue;
                         }
                         else
                         {
-                            System.Console.WriteLine("{0}: Exception during USER merge of {1} rows. {2}: {3}\n{4}",
-                                _pageName, udr.Count,
-                                sex.Number, sex.Source, sex.Message);
+                            System.Console.WriteLine($"{_pageName}: Exception during USER merge of {udr.Count} rows. {sex.Number}: {sex.Source}\n{sex.Message}");
                             throw sex;
                         }
                     }
                     catch (InvalidOperationException ioe)
                     {
-                        System.Console.WriteLine("{0}: Exception during PageRevision merge of {1} rows. {2}\n{3}",
-                            _pageName, udr.Count,
-                            ioe.Message, ioe.StackTrace);
+                        System.Console.WriteLine($"{_pageName}: Exception during PageRevision merge of {udr.Count} rows. {ioe.Message}\n{ioe.StackTrace}");
                         throw ioe;
                     }
                     finally
                     {
-                        _pump.CompleteActivity(mergeActivity, _usersAdded, (mergeException == null) ? null : mergeException.Message);
+                        pump.CompleteActivity(mergeActivity, _usersAdded, (mergeException == null) ? null : mergeException.Message);
                     }
 
                 }
                 if (mergeException != null)
                 {
-                    System.Console.WriteLine("{0}: USER merge failed 10 times: {1}, {2}\n{3}",
-                        _pageName, mergeException.Number, mergeException.Source, mergeException.Message);
+                    System.Console.WriteLine($"{_pageName}: USER merge failed 10 times: {mergeException.Number}, {mergeException.Source}\n{mergeException.Message}");
                     throw mergeException;
                 }
             }
@@ -239,14 +221,14 @@ namespace WikiReader
             {
                 if (bulkActivity != -1)
                 {
-                    _pump.CompleteActivity(bulkActivity, null, ex.Message);
+                    pump.CompleteActivity(bulkActivity, null, ex.Message);
                     bulkActivity = -1;
                 }
             }
             finally
             {
                 // drop the temporary table
-                SqlCommand tableDrop = new SqlCommand("DROP TABLE [" + tempTableName + "];", conn);
+                using var tableDrop = new SqlCommand("DROP TABLE [" + tempTableName + "];", conn);
                 tableDrop.ExecuteNonQuery();
             }
         }
@@ -255,29 +237,36 @@ namespace WikiReader
         /// Insert the text of the revisions we're keeping
         /// </summary>
         /// <param name="conn">connection to use for insertion</param>
-        private void BulkInsertRevisionText(SqlConnection conn)
+        private void BulkInsertRevisionText(DatabasePump pump, SqlConnection conn)
         {
+            // build our data reader first
+            PageRevisionTextDataReader prtdr = new(_namespaceId, _pageId, revisions.Values);
+
+            long bulkActivity = pump.StartActivity("Bulk Insert Text", _namespaceId, _pageId, prtdr.Count);
+
+            // if it inserts nothing, skip all this work
+            if (prtdr.Count == 0)
+            {
+                pump.CompleteActivity(bulkActivity, null, null);
+                return;
+            }
+
             // build a unique temporary table name
-            String tempTableName = String.Format("#Text_{0}_{1}", System.Environment.MachineName, Thread.CurrentThread.ManagedThreadId);
+            string tempTableName = $"#Text_{System.Environment.MachineName}_{Environment.CurrentManagedThreadId}";
 
             // create that temporary table
-            SqlCommand tableCreate = new SqlCommand(
-                "CREATE TABLE [" + tempTableName + "] (" +
+            using var tableCreate = new SqlCommand(
+                $"CREATE TABLE [{tempTableName}] (" +
                 "   NamespaceID INT NOT NULL, " +     
                 "	PageID BIGINT NOT NULL," +
                 "	PageRevisionID BIGINT NOT NULL," +
                 "   ArticleText TEXT NOT NULL);", conn);
             tableCreate.ExecuteNonQuery();
 
-            long bulkActivity = -1;
-
             try
             {
                 // bulk insert into the temporary table
-                PageRevisionTextDataReader prtdr = new PageRevisionTextDataReader(_namespaceId, _pageId, revisions.Values);
-                SqlBulkCopy sbc = new SqlBulkCopy(conn);
-
-                bulkActivity = _pump.StartActivity("Bulk Insert Text", _namespaceId, _pageId, prtdr.Count);
+                SqlBulkCopy sbc = new(conn);
 
                 sbc.DestinationTableName = tempTableName;
                 sbc.ColumnMappings.Add(new SqlBulkCopyColumnMapping("PageID", "PageID"));
@@ -288,17 +277,17 @@ namespace WikiReader
                 sbc.WriteToServer(prtdr);
                 Trace.Assert(conn.State == ConnectionState.Open);
 
-                _pump.CompleteActivity(bulkActivity, null, null);
+                pump.CompleteActivity(bulkActivity, null, null);
                 bulkActivity = -1;
 
                 // merge up.
-                SqlException mergeException = null;
+                SqlException? mergeException = null;
                 for (int retries = 10; retries > 0; retries--)
                 {
-                    long mergeActivity = _pump.StartActivity("Merge Text", _namespaceId, _pageId, prtdr.Count);
+                    long mergeActivity = pump.StartActivity("Merge Text", _namespaceId, _pageId, prtdr.Count);
                     try
                     {
-                        SqlCommand tableMerge = new SqlCommand(
+                        using var tableMerge = new SqlCommand(
                             "MERGE INTO [PageRevisionText] WITH (HOLDLOCK) " +
                             "USING [" + tempTableName + "] AS SRC  " +
                             "   ON [PageRevisionText].NamespaceID = SRC.NamespaceID " +
@@ -315,45 +304,38 @@ namespace WikiReader
                     {
                         if (sex.Number == 1205)
                         {
-                            System.Console.WriteLine("{0}: Deadlock encountered during TEXT merge of {2} rows. Retry {1}",
-                                _pageName, retries, prtdr.Count);
+                            System.Console.WriteLine($"{_pageName}: Deadlock encountered during TEXT merge of {prtdr.Count} rows. Retry {retries}");
                             mergeException = sex;
                             Thread.Sleep(2500);
                             continue;
                         }
                         else if (sex.Number == -2)
                         {
-                            System.Console.WriteLine("{0}: Timeout encountered during TEXT merge of {2} rows. Retry {1}",
-                                _pageName, retries, prtdr.Count);
+                            System.Console.WriteLine($"{_pageName}: Timeout encountered during TEXT merge of {prtdr.Count} rows. Retry {retries}");
                             mergeException = sex;
                             Thread.Sleep(2500);
                             continue;
                         }
                         else
                         {
-                            System.Console.WriteLine("{0}: Exception during TEXT merge of {1} rows. {2}: {3}\n{4}",
-                                _pageName, prtdr.Count,
-                                sex.Number, sex.Source, sex.Message);
+                            System.Console.WriteLine($"{_pageName}: Exception during TEXT merge of {prtdr.Count} rows. {sex.Number}: {sex.Source}\n{sex.Message}");
                             throw sex;
                         }
                     }
                     catch (InvalidOperationException ioe)
                     {
-                        System.Console.WriteLine("{0}: Exception during TEXT merge of {1} rows. {2}\n{3}",
-                            _pageName, prtdr.Count,
-                            ioe.Message, ioe.StackTrace);
+                        System.Console.WriteLine($"{_pageName}: Exception during TEXT merge of {prtdr.Count} rows. {ioe.Message}\n{ioe.StackTrace}");
                         throw ioe;
                     }
                     finally
                     {
-                        _pump.CompleteActivity(mergeActivity, _usersAdded, (mergeException == null) ? null : mergeException.Message);
+                        pump.CompleteActivity(mergeActivity, _usersAdded, mergeException?.Message);
                     }
 
                 }
                 if (mergeException != null)
                 {
-                    System.Console.WriteLine("{0}: TEXT merge failed 10 times: {1}, {2}\n{3}",
-                        _pageName, mergeException.Number, mergeException.Source, mergeException.Message);
+                    System.Console.WriteLine($"{_pageName}: TEXT merge failed 10 times: {mergeException.Number}, {mergeException.Source}\n{mergeException.Message}");
                     throw mergeException;
                 }
             }
@@ -361,27 +343,27 @@ namespace WikiReader
             {
                 if (bulkActivity != -1)
                 {
-                    _pump.CompleteActivity(bulkActivity, null, ex.Message);
+                    pump.CompleteActivity(bulkActivity, null, ex.Message);
                     bulkActivity = -1;
                 }
             }
             finally
             {
                 // drop the temporary table
-                SqlCommand tableDrop = new SqlCommand("DROP TABLE [" + tempTableName + "];", conn);
+                using var tableDrop = new SqlCommand($"DROP TABLE [{tempTableName}];", conn);
                 tableDrop.ExecuteNonQuery();
             }
         }
 
 
-        private void BulkInsertRevisions(Insertable previous, SqlConnection conn)
+        private void BulkInsertRevisions(DatabasePump pump, InsertableProgress progress, IInsertable? previous, SqlConnection conn)
         {
             // build a unique temporary table name
-            String tempTableName = String.Format("#Revisions_{0}_{1}", System.Environment.MachineName, Thread.CurrentThread.ManagedThreadId);
+            String tempTableName = $"#Revisions_{System.Environment.MachineName}_{Environment.CurrentManagedThreadId}";
 
             // create that temporary table
-            SqlCommand tableCreate = new SqlCommand(
-                "CREATE TABLE [" + tempTableName + "] (" +
+            using var tableCreate = new SqlCommand(
+                $"CREATE TABLE [{tempTableName}] (" +
                 "   NamespaceID INT NOT NULL, " +
                 "   PageID BIGINT NOT NULL, " +
                 "   PageRevisionID BIGINT NOT NULL, " +
@@ -402,10 +384,10 @@ namespace WikiReader
             try {
 
                 // bulk insert into the temporary table
-                PageRevisionDataReader prdr = new PageRevisionDataReader(_namespaceId, _pageId, revisions.Values);
-                SqlBulkCopy sbc = new SqlBulkCopy(conn);
+                PageRevisionDataReader prdr = new(_namespaceId, _pageId, revisions.Values);
+                var sbc = new SqlBulkCopy(conn);
 
-                bulkActivityID = _pump.StartActivity("Bulk Insert PageRevisions", _namespaceId, _pageId, prdr.Count);
+                bulkActivityID = pump.StartActivity("Bulk Insert PageRevisions", _namespaceId, _pageId, prdr.Count);
 
                 sbc.DestinationTableName = tempTableName;
                 sbc.ColumnMappings.Add(new SqlBulkCopyColumnMapping("PageID", "PageID"));
@@ -426,11 +408,10 @@ namespace WikiReader
                 sbc.WriteToServer(prdr);
                 Trace.Assert(conn.State == ConnectionState.Open);
 
-                _pump.CompleteActivity(bulkActivityID, null, null);
+                pump.CompleteActivity(bulkActivityID, null, null);
                 bulkActivityID = -1;
 
-                // wait until the previous revision is done
-
+                // wait until the previous revision is done, if we've got one
                 if (previous != null)
                 {
                     ManualResetEvent mre = previous.GetCompletedEvent();
@@ -438,15 +419,15 @@ namespace WikiReader
                 }
 
                 // merge up!
-                SqlException mergeException = null;
+                SqlException? mergeException = null;
                 for (int retries = 10; retries > 0; retries--)
                 {
-                    long mergeActivity = _pump.StartActivity("Merge PageRevisions", _namespaceId, _pageId, prdr.Count);
+                    long mergeActivity = pump.StartActivity("Merge PageRevisions", _namespaceId, _pageId, prdr.Count);
                     try
                     {
-                        SqlCommand tableMerge = new SqlCommand(
+                        using var tableMerge = new SqlCommand(
                             "  MERGE INTO [PageRevision] WITH (HOLDLOCK)" +
-                            "  USING [" + tempTableName + "] AS SRC " +
+                            $"  USING [{tempTableName}] AS SRC " +
                             "     ON [PageRevision].PageRevisionID = SRC.PageRevisionID " +
                             "	 AND [PageRevision].PageID = SRC.PageID " +
                             "    AND [PageRevision].NamespaceID = SRC.NamespaceID " +
@@ -462,51 +443,44 @@ namespace WikiReader
                         _revsAdded = tableMerge.ExecuteNonQuery();
                         _revsAlready = prdr.Count - _revsAdded;
                         mergeException = null;
-                        _progress.CompleteRevisions(prdr.Count);
+                        progress.CompleteRevisions(prdr.Count);
                         break;
                     }
                     catch (SqlException sex)
                     {
                         if (sex.Number == 1205)
                         {
-                            System.Console.WriteLine("{0}: Deadlock encountered during PageRevision merge of {2} rows. Retry {1}",
-                                _pageName, retries, prdr.Count);
+                            System.Console.WriteLine($"{_pageName}: Deadlock encountered during PageRevision merge of {prdr.Count} rows. Retry {retries}");
                             mergeException = sex;
                             Thread.Sleep(2500);
                             continue;
                         }
                         else if (sex.Number == -2)
                         {
-                            System.Console.WriteLine("{0}: Timeout encountered during PageRevision merge of {2} rows. Retry {1}",
-                                _pageName, retries, prdr.Count);
+                            System.Console.WriteLine($"{_pageName}: Timeout encountered during PageRevision merge of {prdr.Count} rows. Retry {retries}");
                             mergeException = sex;
                             Thread.Sleep(2500);
                             continue;
                         }
                         else
                         {
-                            System.Console.WriteLine("{0}: Exception during PageRegision merge of {1} rows. {2}: {3}\n{4}",
-                                _pageName, prdr.Count,
-                                sex.Number, sex.Source, sex.Message);
+                            System.Console.WriteLine($"{_pageName}: Exception during PageRegision merge of {prdr.Count} rows. {sex.Number}: {sex.Source}\n{sex.Message}");
                             throw sex;
                         }
                     }
                     catch (InvalidOperationException ioe)
                     {
-                        System.Console.WriteLine("{0}: Exception during PageRevision merge of {1} rows. {2}\n{3}",
-                            _pageName, prdr.Count,
-                            ioe.Message, ioe.StackTrace);
+                        System.Console.WriteLine($"{_pageName}: Exception during PageRevision merge of {prdr.Count} rows. {ioe.Message}\n{ioe.StackTrace}");
                         throw ioe;
                     }
                     finally
                     {
-                        _pump.CompleteActivity(mergeActivity, _revsAdded, (mergeException == null) ? null : mergeException.Message);
+                        pump.CompleteActivity(mergeActivity, _revsAdded, (mergeException == null) ? null : mergeException.Message);
                     }
                 }
                 if (mergeException != null)
                 {
-                    System.Console.WriteLine("{0}: PageRevision merge failed 10 times: {1}, {2}\n{3}",
-                        _pageName, mergeException.Number, mergeException.Source, mergeException.Message);
+                    System.Console.WriteLine($"{_pageName}: PageRevision merge failed 10 times: {mergeException.Number}, {mergeException.Source}\n{mergeException.Message}");
                     throw mergeException;
                 }
             }
@@ -514,7 +488,7 @@ namespace WikiReader
             {
                 if (bulkActivityID != -1)
                 {
-                    _pump.CompleteActivity(bulkActivityID, null, ex.Message);
+                    pump.CompleteActivity(bulkActivityID, null, ex.Message);
                     bulkActivityID = -1;
                 }
             }
@@ -524,7 +498,7 @@ namespace WikiReader
                 completeEvent.Set();
 
                 // drop the temporary table
-                SqlCommand tableDrop = new SqlCommand("DROP TABLE [" + tempTableName + "];", conn);
+                using var tableDrop = new SqlCommand($"DROP TABLE [{tempTableName}];", conn);
                 tableDrop.ExecuteNonQuery();
             }
         }
@@ -533,39 +507,37 @@ namespace WikiReader
         /// Insert the page object itself
         /// </summary>
         /// <param name="conn">Connection to use for insertion</param>
-        private void InsertPage(SqlConnection conn)
+        private void InsertPage(DatabasePump pump, InsertableProgress progress, SqlConnection conn)
         {
-            long activityID = _pump.StartActivity("Insert Page", _namespaceId, _pageId, 1);
-            SqlCommand cmd = new SqlCommand("INSERT INTO [Page] (NamespaceID, PageID, PageName, RedirectTitle) VALUES (@NamespaceID, @PageID, @PageName, @RedirectTitle);", conn);
+            long activityID = pump.StartActivity("Insert Page", _namespaceId, _pageId, 1);
+            using var cmd = new SqlCommand("INSERT INTO [Page] (NamespaceID, PageID, PageName, RedirectTitle) VALUES (@NamespaceID, @PageID, @PageName, @RedirectTitle);", conn);
             cmd.Parameters.AddWithValue("@NamespaceID", _namespaceId);
             cmd.Parameters.AddWithValue("@PageID", _pageId);
             cmd.Parameters.AddWithValue("@PageName", _pageName);
             cmd.Parameters.AddWithValue("@RedirectTitle", _redirectTitle ?? (object)DBNull.Value);
 
-            Exception exResult = null;
+            Exception? exResult = null;
             int inserted = 0;
             try
             {
                 cmd.ExecuteNonQuery();
-                _progress.InsertedPages(1);
+                progress.InsertedPages(1);
                 inserted++;
             }
             catch (SqlException sex)
             {
                 exResult = sex;
                 if (sex.Number == 8152)
-                {
-                    System.Console.WriteLine("Error: page name is too long at {0} characters", _pageName.Length);
-                }
+                    System.Console.WriteLine($"Error: page name is too long at {_pageName.Length} characters");
                 else if (sex.Number == 2601)
                 {
                     // duplicate! we'll do an update instead
-                    cmd = new SqlCommand("UPDATE [Page] SET RedirectTitle = @RedirectTitle WHERE PageID = @PageID AND NamespaceID = @NamespaceID;", conn);
-                    cmd.Parameters.AddWithValue("@NamespaceID", _namespaceId);
-                    cmd.Parameters.AddWithValue("@PageID", _pageId);
-                    cmd.Parameters.AddWithValue("@RedirectTitle", _redirectTitle ?? (object)DBNull.Value);
+                    using var updateCmd = new SqlCommand("UPDATE [Page] SET RedirectTitle = @RedirectTitle WHERE PageID = @PageID AND NamespaceID = @NamespaceID;", conn);
+                    updateCmd.Parameters.AddWithValue("@NamespaceID", _namespaceId);
+                    updateCmd.Parameters.AddWithValue("@PageID", _pageId);
+                    updateCmd.Parameters.AddWithValue("@RedirectTitle", _redirectTitle ?? (object)DBNull.Value);
 
-                    cmd.ExecuteNonQuery();
+                    updateCmd.ExecuteNonQuery();
                 }
                 else
                 {
@@ -579,15 +551,14 @@ namespace WikiReader
             }
             finally
             {
-                _pump.CompleteActivity(activityID, inserted, (exResult == null) ? null : exResult.Message);
+                pump.CompleteActivity(activityID, inserted, exResult?.Message);
             }
-
         }
 
         /// <summary>
         /// Get our object name; this is used to name the connection in SQL Server
         /// </summary>
-        String Insertable.ObjectName
+        String IInsertable.ObjectName
         {
             get { return "Page Inserter (" + _pageName + ")"; }
         }
@@ -595,7 +566,7 @@ namespace WikiReader
         /// <summary>
         /// How many revisions do we plan to insert?
         /// </summary>
-        int Insertable.RevisionCount
+        int IInsertable.RevisionCount
         {
             get { return revisions.Count; }
         }

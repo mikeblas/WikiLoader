@@ -7,17 +7,17 @@ namespace WikiReader
     class PageRevisionDataReader : IDataReader
     {
         // list of PageRevisions this reader will supply
-        List<PageRevision> _revisions = new List<PageRevision>();
+        readonly List<PageRevision> _revisions = new();
 
         /// <summary>
         /// What revision would be next read?
         /// </summary>
         int _currentRevision = -1;
-        int _namespaceID;
-        long _pageID;
+        readonly int _namespaceID;
+        readonly long _pageID;
 
-        Dictionary<string, int> _columnMap = new Dictionary<string, int>();
-        Dictionary<int, string> _indexMap = new Dictionary<int, string>();
+        readonly Dictionary<string, int> _columnMap = new();
+        readonly Dictionary<int, string> _indexMap = new();
 
         public PageRevisionDataReader(int namespaceID, long pageID, IList<PageRevision> pages)
         {
@@ -112,7 +112,7 @@ namespace WikiReader
             throw new NotImplementedException();
         }
 
-        long IDataRecord.GetBytes(int i, long fieldOffset, byte[] buffer, int bufferoffset, int length)
+        long IDataRecord.GetBytes(int i, long fieldOffset, byte[]? buffer, int bufferoffset, int length)
         {
             throw new NotImplementedException();
         }
@@ -122,7 +122,7 @@ namespace WikiReader
             throw new NotImplementedException();
         }
 
-        long IDataRecord.GetChars(int i, long fieldoffset, char[] buffer, int bufferoffset, int length)
+        long IDataRecord.GetChars(int i, long fieldoffset, char[]? buffer, int bufferoffset, int length)
         {
             throw new NotImplementedException();
         }
@@ -184,8 +184,7 @@ namespace WikiReader
 
         string IDataRecord.GetName(int i)
         {
-            string name;
-            if (_indexMap.TryGetValue(i, out name))
+            if (_indexMap.TryGetValue(i, out string? name))
             {
                 return name;
             }
@@ -194,12 +193,10 @@ namespace WikiReader
 
         int IDataRecord.GetOrdinal(string name)
         {
-            int index;
-            if (_columnMap.TryGetValue(name, out index))
-            {
+            if (_columnMap.TryGetValue(name, out int index))
                 return index;
-            }
-            System.Console.WriteLine("Couldn't find {0}", name);
+
+            System.Console.WriteLine($"Couldn't find {name}");
             throw new NotImplementedException();
         }
 
@@ -210,9 +207,7 @@ namespace WikiReader
 
         object IDataRecord.GetValue(int i)
         {
-            String columnName;
-
-            if ( ! _indexMap.TryGetValue(i, out columnName) )
+            if (!_indexMap.TryGetValue(i, out string? columnName))
                 throw new NotImplementedException();
 
             string columnNameLower = columnName.ToLower();
@@ -237,16 +232,19 @@ namespace WikiReader
                     return (record.Text != null);
 
                 case "comment":
-                    return record.Comment;
+                    if (record.Comment == null)
+                        return DBNull.Value;
+                    else
+                        return record.Comment;
 
                 case "pagerevisionid":
-                    return record.revisionId;
+                    return record.RevisionId;
 
                 case "parentpagerevisionid":
-                    return record.parentRevisionId;
+                    return record.ParentRevisionId;
 
                 case "revisionwhen":
-                    return record.timestamp;
+                    return record.TimeStamp;
 
                 case "textdeleted":
                     return record.TextDeleted;
@@ -255,12 +253,12 @@ namespace WikiReader
                     {
                         if (record.Contributor == null)
                         {
-                            return null;
+                            return DBNull.Value;
                         }
                         else
                         {
                             if (record.Contributor.IsAnonymous)
-                                return null;
+                                return DBNull.Value;
                             else
                                 return record.Contributor.ID;
                         }
@@ -274,22 +272,26 @@ namespace WikiReader
 
                 case "ipaddress":
                     if (record.Contributor == null)
-                        return null;
+                        return DBNull.Value;
                     else
                     {
                         if (record.Contributor.IsAnonymous)
+                        {
+                            if (record.Contributor.IPAddress == null)
+                                throw new InvalidOperationException("IPAddress must be set if IsAnonymous");
                             return record.Contributor.IPAddress;
+                        }
                         else
-                            return null;
+                            return DBNull.Value;
                     }
 
 
                 default:
-                    System.Console.WriteLine("Need more cases! {0}, {1}", i, columnName);
+                    System.Console.WriteLine("Need more cases! {i}, {columnName}");
                     break;
             }
 
-            return null;
+            throw new InvalidOperationException($"unknown name {columnName}");
         }
 
         int IDataRecord.GetValues(object[] values)

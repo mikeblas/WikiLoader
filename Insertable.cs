@@ -5,11 +5,11 @@ using System.Threading;
 
 namespace WikiReader
 {
-    interface Insertable
+    interface IInsertable
     {
-        void Insert(Insertable previous, DatabasePump pump, SqlConnection conn, InsertableProgress progress);
+        void Insert(IInsertable? previous, DatabasePump pump, SqlConnection conn, InsertableProgress progress);
 
-        String ObjectName
+        string ObjectName
         {
             get;
         }

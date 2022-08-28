@@ -15,8 +15,9 @@ namespace WikiReader
     class NamespaceInfo
     {
         int _pageCount;
-        Int64 _namespaceId;
-        String _name;
+        readonly Int64 _namespaceId;
+        readonly string _name;
+
         /// <summary>
         /// Create a new namespace instance.
         /// pageCount is initalized to one.
@@ -24,7 +25,7 @@ namespace WikiReader
         /// </summary>
         /// <param name="name">Name of this namespace</param>
         /// <param name="namespaceId">ID for this namespace</param>
-        public NamespaceInfo(String name, Int64 namespaceId)
+        public NamespaceInfo(string name, Int64 namespaceId)
         {
             _name = name;
             _pageCount = 1;
@@ -36,7 +37,7 @@ namespace WikiReader
             get { return _namespaceId; }
         }
 
-        public String Name
+        public string Name
         {
             get { return _name; }
         }

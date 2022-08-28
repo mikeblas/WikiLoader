@@ -8,14 +8,14 @@ namespace WikiReader
     class PageRevisionTextDataReader  : IDataReader
     {
         // list of PageRevisions this reader will supply
-        List<PageRevision> _revisions = new List<PageRevision>();
+        readonly List<PageRevision> _revisions = new();
 
         /// <summary>
         /// What revision would be next read?
         /// </summary>
         int _currentRevision = -1;
-        int _namespaceID;
-        long _pageID;
+        readonly int _namespaceID;
+        readonly long _pageID;
 
         public PageRevisionTextDataReader(int namespaceID, long pageID, IList<PageRevision> pages)
         {
@@ -92,7 +92,7 @@ namespace WikiReader
             throw new NotImplementedException();
         }
 
-        long IDataRecord.GetBytes(int i, long fieldOffset, byte[] buffer, int bufferoffset, int length)
+        long IDataRecord.GetBytes(int i, long fieldOffset, byte[]? buffer, int bufferoffset, int length)
         {
             throw new NotImplementedException();
         }
@@ -102,7 +102,7 @@ namespace WikiReader
             throw new NotImplementedException();
         }
 
-        long IDataRecord.GetChars(int i, long fieldoffset, char[] buffer, int bufferoffset, int length)
+        long IDataRecord.GetChars(int i, long fieldoffset, char[]? buffer, int bufferoffset, int length)
         {
             throw new NotImplementedException();
         }
@@ -162,7 +162,7 @@ namespace WikiReader
         long IDataRecord.GetInt64(int i)
         {
             if (i == 2)
-                return _revisions[_currentRevision].revisionId;
+                return _revisions[_currentRevision].RevisionId;
             if (i == 1)
                 return _pageID;
             if (i == 0)
@@ -177,29 +177,39 @@ namespace WikiReader
 
         int IDataRecord.GetOrdinal(string name)
         {
-            switch (name)
+            return name switch
             {
-                case "NamespaceID": return 0;
-                case "PageID": return 1;
-                case "PageRevisionID": return 2;
-                case "ArticleText": return 3;
-            }
-            throw new NotImplementedException();
+                "NamespaceID" => 0,
+                "PageID" => 1,
+                "PageRevisionID" => 2,
+                "ArticleText" => 3,
+                _ => throw new NotImplementedException(),
+            };
         }
 
         string IDataRecord.GetString(int i)
         {
             if (i == 3)
-                return _revisions[_currentRevision].Text;
+            {
+                string? s = _revisions[_currentRevision].Text;
+                if (s == null)
+                    throw new InvalidOperationException("null GetString");
+                return s;
+            }
             throw new NotImplementedException();
         }
 
         object IDataRecord.GetValue(int i)
         {
             if (i == 3)
-                return _revisions[_currentRevision].Text;
+            {
+                string? s = _revisions[_currentRevision].Text;
+                if (s == null)
+                    throw new InvalidOperationException("null Getvalue");
+                return s;
+            }
             if (i == 2)
-                return _revisions[_currentRevision].revisionId;
+                return _revisions[_currentRevision].RevisionId;
             if (i == 1)
                 return _pageID;
             if (i == 0)
