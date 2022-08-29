@@ -1,8 +1,4 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace WikiReader
 {
@@ -18,12 +14,13 @@ namespace WikiReader
         readonly Int64 _revisionId = 0;
         readonly DateTime _timestamp = DateTime.MinValue;
         readonly User? _contributor = null;
-        string? _comment = null;
-        string? _text = null;
-        int _textLength = 0;
+        readonly string? _comment = null;
         readonly bool _minor = false;
         readonly bool _commentDeleted = false;
         readonly bool _textDeleted = false;
+
+        int _textLength = 0;
+        string? _text = null;
 
         public PageRevision(Int64 parentRevisionId, Int64 revisionId, DateTime timestamp, User? contributor, string? comment, string? text, bool minor)
         {
@@ -69,7 +66,7 @@ namespace WikiReader
         public string? Comment
         {
             get { return _comment; }
-            set { _comment = value; }
+            // set { _comment = value; }
         }
 
         public bool CommentDeleted
@@ -88,7 +85,10 @@ namespace WikiReader
             set
             {
                 _text = value;
-                if (_text!= null) _textLength = _text.Length;
+                if (_text != null)
+                    _textLength = _text.Length;
+                else
+                    _textLength = 0;
             }
         }
 

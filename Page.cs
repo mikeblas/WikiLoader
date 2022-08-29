@@ -6,6 +6,7 @@ using System.Data.Sql;
 using System.Data.SqlClient;
 using System.Threading;
 using System.Diagnostics;
+using System.Runtime.InteropServices.ObjectiveC;
 
 namespace WikiReader
 {
@@ -46,12 +47,12 @@ namespace WikiReader
         /// <summary>
         /// set indicating which users we've already inserted
         /// </summary>
-        static HashSet<Int64> _insertedUserSet = new HashSet<Int64>();
+        static HashSet<Int64> _insertedUserSet = new ();
 
         /// <summary>
         /// Map of revisions from RevisionID to the PageRevision at that ID
         /// </summary>
-        SortedList<Int64, PageRevision> revisions = new SortedList<Int64, PageRevision>();
+        SortedList<Int64, PageRevision> revisions = new ();
 
         private int _usersAdded = 0;
         private int _usersAlready = 0;
@@ -111,7 +112,8 @@ namespace WikiReader
             BulkInsertUsers(pump, conn);
 
             // then, insert the revisions
-            BulkInsertRevisions(pump, progress, previous, conn);
+            SelectAndInsertRevisions(pump, progress, previous, conn);
+            //BulkInsertRevisions(pump, progress, previous, conn);
 
             // insert the text that we have
             BulkInsertRevisionText(pump, conn);
@@ -356,6 +358,76 @@ namespace WikiReader
             }
         }
 
+        private void SelectAndInsertRevisions(DatabasePump pump, IInsertableProgress progress, IInsertable? previous, SqlConnection conn)
+        {
+            // build a hash set of all the known revisions of this page
+            HashSet<Int64> knownRevisions = new();
+
+            using var cmdSelect = new SqlCommand("select PageRevisionID FROM PageRevision WHERE PageID = @PageID", conn);
+            cmdSelect.Parameters.AddWithValue("@NamespaceID", _namespaceId);
+            cmdSelect.Parameters.AddWithValue("@PageID", _pageId);
+
+            using (var reader = cmdSelect.ExecuteReader())
+            {
+                while (reader.Read())
+                    knownRevisions.Add((Int64)reader["PageRevisionID"]);
+            }
+
+            // now insert all that we have which do not match
+            using var cmdInsert = new SqlCommand(
+                "  INSERT INTO [PageRevision] " +
+                "       (NamespaceID, PageID, PageRevisionID, ParentPageRevisionID, " +
+                "        RevisionWhen, ContributorID, IPAddress, Comment, " +
+                "        TextAvailable, IsMinor, ArticleTextLength, TextDeleted, UserDeleted) " +
+                " VALUES " +
+                "       (@NamespaceID, @PageID, @PageRevisionID, @ParentPageRevisionID, " +
+                "        @RevisionWhen, @ContributorID, @IPAddress, @Comment, " +
+                "        @TextAvailable, @IsMinor, @ArticleTextLength, @TextDeleted, @UserDeleted)", conn);
+
+            foreach ((Int64 revID, var rev) in revisions)
+            {
+                if (knownRevisions.Contains(revID))
+                    continue;
+
+                object contributor = DBNull.Value;
+                object ipAddress = DBNull.Value;
+                object contributorID = DBNull.Value;
+
+                if (rev.Contributor != null)
+                {
+                    if (!rev.Contributor.IsAnonymous)
+                        contributorID = rev.Contributor.ID;
+                    else
+                        ipAddress = rev.Contributor.IPAddress;
+                }
+
+                cmdInsert.Parameters.Clear();
+                cmdInsert.Parameters.AddWithValue("@NamespaceID", _namespaceId);
+                cmdInsert.Parameters.AddWithValue("@PageID", _pageId);
+                cmdInsert.Parameters.AddWithValue("@PageRevisionID", revID);
+                cmdInsert.Parameters.AddWithValue("@ParentPageRevisionID", rev.ParentRevisionId);
+                cmdInsert.Parameters.AddWithValue("@RevisionWhen", rev.TimeStamp);
+                cmdInsert.Parameters.AddWithValue("@ContributorID", contributorID);
+                cmdInsert.Parameters.AddWithValue("@IPAddress", ipAddress);
+                cmdInsert.Parameters.AddWithValue("@Comment", rev.Comment == null ? DBNull.Value : rev.Comment);
+                cmdInsert.Parameters.AddWithValue("@TextAvailable", rev.Text != null);
+                cmdInsert.Parameters.AddWithValue("@IsMinor", rev.IsMinor);
+                cmdInsert.Parameters.AddWithValue("@ArticleTextLength", rev.TextLength);
+                cmdInsert.Parameters.AddWithValue("@TextDeleted", rev.TextDeleted);
+                cmdInsert.Parameters.AddWithValue("@UserDeleted", rev.Contributor == null);
+
+                try
+                {
+                    cmdInsert.ExecuteNonQuery();
+                }
+                catch (SqlException sex)
+                {
+
+                    Console.WriteLine("Exception!!!");
+                }
+            }
+        }
+
 
         private void BulkInsertRevisions(DatabasePump pump, IInsertableProgress progress, IInsertable? previous, SqlConnection conn)
         {
@@ -533,7 +605,7 @@ namespace WikiReader
                 exResult = sex;
                 if (sex.Number == 8152)
                     System.Console.WriteLine($"Error: page name is too long at {_pageName.Length} characters");
-                else if (sex.Number == 2601)
+                else if (sex.Number == 2601 || sex.Number == 2627)
                 {
                     // duplicate! we'll do an update instead
                     using var updateCmd = new SqlCommand("UPDATE [Page] SET RedirectTitle = @RedirectTitle WHERE PageID = @PageID AND NamespaceID = @NamespaceID;", conn);
@@ -542,11 +614,12 @@ namespace WikiReader
                     updateCmd.Parameters.AddWithValue("@RedirectTitle", _redirectTitle ?? (object)DBNull.Value);
 
                     updateCmd.ExecuteNonQuery();
+                    exResult = null;
                 }
                 else
                 {
                     exResult = null;
-                    throw sex;
+                    throw;
                 }
             }
             catch (Exception ex)

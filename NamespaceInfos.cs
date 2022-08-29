@@ -105,7 +105,7 @@ namespace WikiReader
                 catch (SqlException sex)
                 {
                     // if the exception is a duplicate key, just tally that
-                    if (sex.Number == 2601)
+                    if (sex.Number == 2601 || sex.Number == 2627)
                     {
                         // already know that namespace ID
                         already += 1;

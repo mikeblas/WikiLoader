@@ -62,7 +62,7 @@ CREATE TABLE [PageRevision]
 	RevisionWhen DATETIME NOT NULL,
 	ContributorID BIGINT,
 	IPAddress VARCHAR(39),
-	Comment NVARCHAR(255),
+	Comment NVARCHAR(800),
 	TextAvailable BIT NOT NULL,
 	IsMinor BIT NOT NULL,
 	ArticleTextLength INT NOT NULL,
