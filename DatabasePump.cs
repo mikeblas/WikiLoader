@@ -24,7 +24,7 @@ namespace WikiReader
     /// Only one instance can exist because of some shared state in static members.
     /// Need to add some singleton pattern implementation so that it is protected.
     /// </summary>
-    class DatabasePump : InsertableProgress
+    class DatabasePump : IInsertableProgress
     {
         long _runID;
 
@@ -43,10 +43,10 @@ namespace WikiReader
             public IInsertable _i;
             public IInsertable? _previous;
             public SqlConnection _conn;
-            public InsertableProgress _progress;
+            public IInsertableProgress _progress;
             public DatabasePump _pump;
 
-            public CallerInfo(DatabasePump pump, SqlConnection conn, IInsertable i, IInsertable? previous, InsertableProgress progress)
+            public CallerInfo(DatabasePump pump, SqlConnection conn, IInsertable i, IInsertable? previous, IInsertableProgress progress)
             {
                 _pump = pump;
                 _conn = conn;

@@ -136,6 +136,18 @@ GO
 
 CREATE UNIQUE INDEX Activity_AK ON [Activity] (ActivityID);
 
+ALTER TABLE [dbo].[Activity]  WITH CHECK ADD  CONSTRAINT [FK_Activity_Run] FOREIGN KEY([RunID])
+REFERENCES [dbo].[Run] ([RunID])
+ON UPDATE CASCADE
+ON DELETE CASCADE
+GO
+
+ALTER TABLE [dbo].[Activity]  WITH CHECK ADD  CONSTRAINT [FK_Activity_Namespace] FOREIGN KEY([TargetNamespace])
+REFERENCES [dbo].[Namespace] ([NamespaceID])
+ON UPDATE CASCADE
+ON DELETE CASCADE
+GO
+
 -- PageRevisionText holds actual texts of some articles. A row is expected
 -- here if the TextAvailable column in the PageRevision table is not zero.
 CREATE TABLE PageRevisionText (

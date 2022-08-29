@@ -103,7 +103,7 @@ namespace WikiReader
         /// <param name="pump"></param>
         /// <param name="conn">connection to use for insertion</param>
         /// <param name="progress">InsertableProgress interface for progress callbacks</param>
-        public void Insert(IInsertable? previous, DatabasePump pump, SqlConnection conn, InsertableProgress progress)
+        public void Insert(IInsertable? previous, DatabasePump pump, SqlConnection conn, IInsertableProgress progress)
         {
             progress.AddPendingRevisions(revisions.Count);
 
@@ -128,6 +128,7 @@ namespace WikiReader
         /// <summary>
         /// Insert the users who have edited this page. 
         /// </summary>
+        /// <param name="pump">DatabasePump to record our activity</param>
         /// <param name="conn">connection to use for insertion</param>
         private void BulkInsertUsers(DatabasePump pump, SqlConnection conn)
         {
@@ -158,7 +159,7 @@ namespace WikiReader
                 sbc.WriteToServer(udr);
                 Trace.Assert(conn.State == ConnectionState.Open);
 
-                pump.CompleteActivity(bulkActivity, null, null);
+                pump.CompleteActivity(bulkActivity, _insertedUserSet.Count, "inserted users");
                 bulkActivity = -1;
 
                 // merge up.
@@ -228,7 +229,7 @@ namespace WikiReader
             finally
             {
                 // drop the temporary table
-                using var tableDrop = new SqlCommand("DROP TABLE [" + tempTableName + "];", conn);
+                using var tableDrop = new SqlCommand($"DROP TABLE [{tempTableName}]", conn);
                 tableDrop.ExecuteNonQuery();
             }
         }
@@ -247,7 +248,7 @@ namespace WikiReader
             // if it inserts nothing, skip all this work
             if (prtdr.Count == 0)
             {
-                pump.CompleteActivity(bulkActivity, null, null);
+                pump.CompleteActivity(bulkActivity, 0, "No text to insert");
                 return;
             }
 
@@ -266,7 +267,7 @@ namespace WikiReader
             try
             {
                 // bulk insert into the temporary table
-                SqlBulkCopy sbc = new(conn);
+                SqlBulkCopy sbc = new (conn);
 
                 sbc.DestinationTableName = tempTableName;
                 sbc.ColumnMappings.Add(new SqlBulkCopyColumnMapping("PageID", "PageID"));
@@ -277,7 +278,7 @@ namespace WikiReader
                 sbc.WriteToServer(prtdr);
                 Trace.Assert(conn.State == ConnectionState.Open);
 
-                pump.CompleteActivity(bulkActivity, null, null);
+                pump.CompleteActivity(bulkActivity, prtdr.Count, "inserted text");
                 bulkActivity = -1;
 
                 // merge up.
@@ -356,7 +357,7 @@ namespace WikiReader
         }
 
 
-        private void BulkInsertRevisions(DatabasePump pump, InsertableProgress progress, IInsertable? previous, SqlConnection conn)
+        private void BulkInsertRevisions(DatabasePump pump, IInsertableProgress progress, IInsertable? previous, SqlConnection conn)
         {
             // build a unique temporary table name
             String tempTableName = $"#Revisions_{System.Environment.MachineName}_{Environment.CurrentManagedThreadId}";
@@ -382,7 +383,6 @@ namespace WikiReader
             long bulkActivityID = -1;
 
             try {
-
                 // bulk insert into the temporary table
                 PageRevisionDataReader prdr = new(_namespaceId, _pageId, revisions.Values);
                 var sbc = new SqlBulkCopy(conn);
@@ -504,10 +504,14 @@ namespace WikiReader
         }
 
         /// <summary>
-        /// Insert the page object itself
+        /// Insert the page object itself. There's no batching here, since pages are infrequent
+        /// compared to all their revisions and text. We'll blindly insert, then handle any duplicate
+        /// errors by doing an update (since redirection may be updated).
         /// </summary>
+        /// <param name="pump">Database pump object to record our activity</param>
+        /// <param name="progress">implementation of IProgress interface to track our work</param>
         /// <param name="conn">Connection to use for insertion</param>
-        private void InsertPage(DatabasePump pump, InsertableProgress progress, SqlConnection conn)
+        private void InsertPage(DatabasePump pump, IInsertableProgress progress, SqlConnection conn)
         {
             long activityID = pump.StartActivity("Insert Page", _namespaceId, _pageId, 1);
             using var cmd = new SqlCommand("INSERT INTO [Page] (NamespaceID, PageID, PageName, RedirectTitle) VALUES (@NamespaceID, @PageID, @PageName, @RedirectTitle);", conn);
