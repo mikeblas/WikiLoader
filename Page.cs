@@ -426,6 +426,8 @@ namespace WikiReader
                     Console.WriteLine("Exception!!!");
                 }
             }
+
+            progress.CompleteRevisions(revisions.Count);
         }
 
 
