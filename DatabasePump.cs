@@ -200,7 +200,7 @@ namespace WikiReader
         /// Add an Insertable that is ready to go to the database.
         /// </summary>
         /// <param name="i">reference to an object implementing Insertable; we'll enqueue it and add it whne we have threads</param>
-        public void Enqueue(IInsertable i, IInsertable? previous, ref long running, ref long queued, ref long pendingRevisions )
+        public void Enqueue(IInsertable i, IInsertable? previous, ref long running, ref long queued, ref long pendingRevisions)
         {
             // backpressure
             int pauses = 0;

@@ -20,24 +20,24 @@ namespace WikiReader
         /// <summary>
         /// Name of the page we represent
         /// </summary>
-        string _pageName;
+        readonly string _pageName;
 
         /// <summary>
         /// Name of the page redirected to, if not null
         /// </summary>
-        string? _redirectTitle;
+        readonly string? _redirectTitle;
 
         /// <summary>
         /// Namespace which holds that page
         /// </summary>
-        int _namespaceId = 0;
+        readonly int _namespaceId = 0;
 
         /// <summary>
         ///  ID number of this page
         /// </summary>
-        Int64 _pageId = 0;
+        readonly Int64 _pageId = 0;
 
-        ManualResetEvent completeEvent = new(false);
+        readonly ManualResetEvent completeEvent = new(false);
 
         public ManualResetEvent GetCompletedEvent()
         {
@@ -47,12 +47,12 @@ namespace WikiReader
         /// <summary>
         /// set indicating which users we've already inserted
         /// </summary>
-        static HashSet<Int64> _insertedUserSet = new ();
+        static readonly HashSet<Int64> _insertedUserSet = new ();
 
         /// <summary>
         /// Map of revisions from RevisionID to the PageRevision at that ID
         /// </summary>
-        SortedList<Int64, PageRevision> revisions = new ();
+        private readonly SortedList<Int64, PageRevision> revisions = new ();
 
         private int _usersAdded = 0;
         private int _usersAlready = 0;
@@ -111,6 +111,9 @@ namespace WikiReader
             // first, insert all the users
             BulkInsertUsers(pump, conn);
 
+            // insert the page record itself
+            InsertPage(pump, progress, conn);
+
             // then, insert the revisions
             SelectAndInsertRevisions(pump, progress, previous, conn);
             //BulkInsertRevisions(pump, progress, previous, conn);
@@ -118,8 +121,6 @@ namespace WikiReader
             // insert the text that we have
             BulkInsertRevisionText(pump, conn);
 
-            // finally, insert the page record itself
-            InsertPage(pump, progress, conn);
 
             System.Console.WriteLine(
                 $"{_pageName}\n" +
@@ -387,7 +388,11 @@ namespace WikiReader
             foreach ((Int64 revID, var rev) in revisions)
             {
                 if (knownRevisions.Contains(revID))
+                {
+                    progress.CompleteRevisions(1);
+                    _revsAlready += 1;
                     continue;
+                }
 
                 object contributor = DBNull.Value;
                 object ipAddress = DBNull.Value;
@@ -419,15 +424,14 @@ namespace WikiReader
                 try
                 {
                     cmdInsert.ExecuteNonQuery();
+                    progress.CompleteRevisions(1);
+                    _revsAdded += 1;
                 }
                 catch (SqlException sex)
                 {
-
-                    Console.WriteLine("Exception!!!");
+                    Console.WriteLine($"Exception! {sex}");
                 }
             }
-
-            progress.CompleteRevisions(revisions.Count);
         }
 
 
@@ -568,12 +572,12 @@ namespace WikiReader
             }
             finally
             {
-                // signal the next in the chain of waiters
-                completeEvent.Set();
-
                 // drop the temporary table
                 using var tableDrop = new SqlCommand($"DROP TABLE [{tempTableName}];", conn);
                 tableDrop.ExecuteNonQuery();
+
+                // signal the next in the chain of waiters
+                completeEvent.Set();
             }
         }
 

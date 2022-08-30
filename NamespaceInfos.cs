@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Data.Sql;
 using System.Data.SqlClient;
 using System.Threading;
 
@@ -22,6 +21,8 @@ namespace WikiReader
         /// </summary>
         private Dictionary<Int64, NamespaceInfo> _namespaceMap;
 
+        ManualResetEvent completeEvent = new(false);
+
         /// <summary>
         /// Initializes a new NamespaceInfos collection
         /// </summary>
@@ -32,7 +33,7 @@ namespace WikiReader
 
         public ManualResetEvent GetCompletedEvent()
         {
-            throw new Exception("Not implemented!");
+            return completeEvent;
         }
 
         /// <summary>
@@ -121,6 +122,9 @@ namespace WikiReader
             // show our results
             System.Console.WriteLine($"Inserted {inserts} new namespaces; {already} already known");
             pump.CompleteActivity(activityID, inserts, null);
+
+            // signal the next in the chain of waiters
+            completeEvent.Set();
         }
 
         String IInsertable.ObjectName

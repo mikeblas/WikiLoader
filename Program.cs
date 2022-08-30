@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using System.Xml;
 using System.IO;
 using System.Diagnostics;
+using System.Threading;
 
 // https://en.wikipedia.org/wiki/Wikipedia:Database_download#XML_schema
 
@@ -27,7 +28,7 @@ namespace WikiReader
             // string fileName = @"f:\junk\enwiki-latest-pages-meta-history10.xml-p000925001p000972034";
             // string fileName = @"f:\junk\enwiki-latest-pages-meta-history19.xml-p009225001p009575994";
             // string fileName = @"f:\junk\enwiki-latest-pages-meta-history3.xml-p000039229p000043715";
-            string fileName = @"f:\wiki\20220820\unzipped\enwiki-20220820-stub-meta-history3.xml";
+            string fileName = @"f:\wiki\20220820\unzipped\enwiki-20220820-stub-meta-history1.xml";
             if (args.Length >= 1)
                 fileName = args[0];
 
@@ -353,6 +354,9 @@ namespace WikiReader
                             queued = 0;
                             pendingRevisions = 0;
                             _pump.Enqueue(namespaceMap, null, ref running, ref queued, ref pendingRevisions);
+
+                            // wait for namespaces to insert, since they're FKs to everything
+                            namespaceMap.GetCompletedEvent().WaitOne();
                             break;
                     }
                 }
