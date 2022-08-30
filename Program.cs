@@ -10,11 +10,11 @@ using System.Diagnostics;
 
 namespace WikiReader
 {
-    class Program
+    class WikiLoaderProgram
     {
         readonly DatabasePump _pump;
 
-        Program()
+        WikiLoaderProgram()
         {
             _pump = new DatabasePump();
             DatabasePump.TestConnection();
@@ -31,7 +31,7 @@ namespace WikiReader
             if (args.Length >= 1)
                 fileName = args[0];
 
-            Program p = new();
+            WikiLoaderProgram p = new();
             string strResult = "Unknown exception!";
             try
             {
