@@ -1,30 +1,22 @@
 USE [master]
 GO
 
-
 -- DROP DATABASE Wikipedia;
 
-/****** Object:  Database [Wikipedia]    Script Date: 2014-10-30 09:53:57 ******/
+/****** Object:  Database [Wikipedia]    Script Date: 2022-08-30 07:05:59 ******/
 CREATE DATABASE [Wikipedia]
  CONTAINMENT = NONE
  ON  PRIMARY 
 ( NAME = N'Wikipedia1_1', FILENAME = N'G:\SQLData\Wikipedia1_1.mdf' , SIZE = 8GB , MAXSIZE = UNLIMITED, FILEGROWTH = 256MB ),
  FILEGROUP [SECONDARY] 
-( NAME = N'Wikipedia2_1', FILENAME = N'H:\SQLData\Wikipedia2_1.ndf' , SIZE = 4GB , MAXSIZE = UNLIMITED, FILEGROWTH = 256MB )
+( NAME = N'Wikipedia2_1', FILENAME = N'H:\SQLData\Wikipedia2_1.ndf' , SIZE = 8GB , MAXSIZE = UNLIMITED, FILEGROWTH = 256MB ),
+ FILEGROUP [SPAN]
+( NAME = N'WikipediaSpan_1', FILENAME = N'G:\SQLData\WikipediaSpan_1.ndf' , SIZE = 8GB, MAXSIZE = UNLIMITED, FILEGROWTH = 256MB ),
+( NAME = N'WikipediaSpan_2', FILENAME = N'H:\SQLData\WikipediaSpan_2.ndf' , SIZE = 8GB, MAXSIZE = UNLIMITED, FILEGROWTH = 256MB )
  LOG ON 
 ( NAME = N'Wikipedia_log', FILENAME = N'H:\SQLLogs\Wikipedia_log.ldf' , SIZE = 256MB , MAXSIZE = 8GB , FILEGROWTH = 256MB )
 GO
 
-ALTER DATABASE [Wikipedia] ADD FILEGROUP [SPAN]
-GO
-ALTER DATABASE [Wikipedia] ADD FILE ( NAME = N'WikipediaSpan_1', FILENAME = N'G:\SQLData\WikipediaSpan_1.ndf' , SIZE = 4GB, FILEGROWTH = 256MB ) TO FILEGROUP [SPAN]
-GO
-ALTER DATABASE [Wikipedia] ADD FILE ( NAME = N'WikipediaSpan_2', FILENAME = N'H:\SQLData\WikipediaSpan_2.ndf' , SIZE = 4GB, FILEGROWTH = 256MB ) TO FILEGROUP [SPAN]
-GO
-
-
-ALTER DATABASE [Wikipedia] SET COMPATIBILITY_LEVEL = 120
-GO
 
 IF (1 = FULLTEXTSERVICEPROPERTY('IsFullTextInstalled'))
 begin
@@ -122,4 +114,5 @@ GO
 ALTER DATABASE [Wikipedia] SET  READ_WRITE 
 GO
 
-
+ALTER DATABASE [Wikipedia] SET QUERY_STORE = OFF
+GO

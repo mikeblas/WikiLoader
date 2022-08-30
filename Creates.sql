@@ -12,8 +12,20 @@ GO
 
 CREATE /* UNIQUE */ INDEX User_AK ON [User] (UserName) ON [PRIMARY];
 
--- SQL_Latin1_General_CP1_CI_AS
--- SQL_Latin1_General_CP1_CS_AS
+-- A namcepace is a grouping of pages. Normal pages are in the main namespace, and other
+-- namespaces include Talk for conversations about a page, User for user vanity pages, and 
+-- Template for a system of templates that can be invoked when rendering any page.
+CREATE TABLE [dbo].[Namespace](
+	[NamespaceID] [int] NOT NULL,
+	[NamespaceName] [nvarchar](80) NULL,
+ CONSTRAINT [Namespace_PK] PRIMARY KEY CLUSTERED 
+(
+	[NamespaceID] ASC
+)WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON, OPTIMIZE_FOR_SEQUENTIAL_KEY = OFF) ON [PRIMARY]
+) ON [PRIMARY]
+GO
+
+CREATE UNIQUE INDEX Namespace_AK ON [Namespace] (NamespaceName);
 
 
 -- a page is a particualr topic in a namespace. It has an ID ane a name,
@@ -21,11 +33,10 @@ CREATE /* UNIQUE */ INDEX User_AK ON [User] (UserName) ON [PRIMARY];
 CREATE TABLE [dbo].[Page](
 	[NamespaceID] [int] NOT NULL,
 	[PageID] [bigint] NOT NULL,
-	[PageName] [nvarchar](265) NOT NULL,
+	[PageName] [nvarchar](265) COLLATE Latin1_General_BIN NOT NULL,
 	[RedirectTitle] [nvarchar](265) NULL,
  CONSTRAINT [Page_PK] PRIMARY KEY CLUSTERED 
 (
-	[NamespaceID] ASC,
 	[PageID] ASC
 )WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON, OPTIMIZE_FOR_SEQUENTIAL_KEY = OFF) ON [PRIMARY]
 ) ON [PRIMARY]
@@ -40,7 +51,8 @@ GO
 ALTER TABLE [dbo].[Page] CHECK CONSTRAINT [FK_Page_Namespace]
 GO
 
-CREATE INDEX Page_AK2 ON [Page] (NamespaceID, PageName) ON [PRIMARY];
+CREATE INDEX Page_Space_Title ON [Page] (NamespaceID, PageName) ON [PRIMARY];
+
 
 
 -- A PageRevision is a revision of a particular page, written by some certain user
@@ -57,7 +69,7 @@ CREATE TABLE [PageRevision]
 (
 	NamespaceID INT NOT NULL,
 	PageID BIGINT NOT NULL,
-	PageRevisionID BIGINT NOT NULL,
+	PageRevisionID BIGINT NOT NULL PRIMARY KEY CLUSTERED,
 	ParentPageRevisionID BIGINT NOT NULL,
 	RevisionWhen DATETIME NOT NULL,
 	ContributorID BIGINT,
@@ -68,27 +80,54 @@ CREATE TABLE [PageRevision]
 	ArticleTextLength INT NOT NULL,
 	TextDeleted BIT NOT NULL,
 	UserDeleted BIT NOT NULL,
-);
+) ON [SPAN];
 
-CREATE UNIQUE CLUSTERED INDEX PageRevision_PK ON PageRevision(PageID, PageRevisionID) ON [PRIMARY];
-CREATE INDEX PageRevision_Namespace ON [PageRevision] (NamespaceID, PageID) ON [SECONDARY];
-CREATE INDEX PageRevision_Contributor ON [PageRevision] (ContributorID) ON [SECONDARY];
-CREATE INDEX PageRevision_When2 ON [PageRevision] (RevisionWhen) ON [SPAN];
-
--- A namcepace is a grouping of pages. Normal pages are in the main namespace, and other
--- namespaces include Talk for conversations about a page, User for user vanity pages, and 
--- Template for a system of templates that can be invoked when rendering any page.
-CREATE TABLE [dbo].[Namespace](
-	[NamespaceID] [int] NOT NULL,
-	[NamespaceName] [nvarchar](80) NULL,
- CONSTRAINT [Namespace_PK] PRIMARY KEY CLUSTERED 
-(
-	[NamespaceID] ASC
-)WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON, OPTIMIZE_FOR_SEQUENTIAL_KEY = OFF) ON [PRIMARY]
-) ON [PRIMARY]
+ALTER TABLE [dbo].[PageRevision]  WITH CHECK ADD  CONSTRAINT [FK_PageRevision_Namespace] FOREIGN KEY([NamespaceID])
+REFERENCES [dbo].[Namespace] ([NamespaceID])
+ON UPDATE NO ACTION
+ON DELETE NO ACTION
 GO
 
-CREATE UNIQUE INDEX Namespace_AK ON [Namespace] (NamespaceName);
+ALTER TABLE [dbo].[PageRevision]  WITH CHECK ADD  CONSTRAINT [FK_PageRevision_Page] FOREIGN KEY([PageID])
+REFERENCES [dbo].[Page] ([PageID])
+ON UPDATE CASCADE
+ON DELETE CASCADE
+GO
+
+CREATE INDEX PageRevision_When ON PageRevision(RevisionWhen) ON [SPAN];
+CREATE INDEX PageRevision_PageID_When ON PageRevision(PageID, RevisionWhen) ON [SECONDARY];
+CREATE INDEX PageRevision_Contributor_When ON PageRevision(ContributorID, RevisionWhen) ON [SECONDARY];
+
+
+-- PageRevisionText holds actual texts of some articles. A row is expected
+-- here if the TextAvailable column in the PageRevision table is not zero.
+
+CREATE TABLE PageRevisionText (
+	NamespaceID INT NOT NULL,
+	PageID BIGINT NOT NULL,
+	PageRevisionID BIGINT NOT NULL PRIMARY KEY CLUSTERED ON [SECONDARY],
+	ArticleText VARCHAR(MAX) NOT NULL
+) ON SECONDARY;
+
+CREATE INDEX PageRevisionText_Page_AK ON PageRevisionText(PageID);
+
+ALTER TABLE [dbo].[PageRevisionText]  WITH CHECK ADD  CONSTRAINT [FK_PageRevisionText_Namespace] FOREIGN KEY([NamespaceID])
+REFERENCES [dbo].[Namespace] ([NamespaceID])
+ON UPDATE NO ACTION
+ON DELETE NO ACTION
+GO
+
+ALTER TABLE [dbo].[PageRevisionText]  WITH CHECK ADD  CONSTRAINT [FK_PageRevisionText_Page] FOREIGN KEY([PageID])
+REFERENCES [dbo].[Page] ([PageID])
+ON UPDATE NO ACTION
+ON DELETE NO ACTION
+GO
+
+ALTER TABLE [dbo].[PageRevisionText]  WITH CHECK ADD  CONSTRAINT [FK_PageRevisionText_revision] FOREIGN KEY([PageRevisionID])
+REFERENCES [dbo].[PageRevision] ([PageRevisionID])
+ON UPDATE CASCADE
+ON DELETE CASCADE
+GO
 
 -- A Run is an instance of any read-write application using this database. An entry in
 -- Run must be made to identify application instances so they can log their work in the
@@ -97,7 +136,7 @@ CREATE TABLE [dbo].[Run](
 	[RunID] [bigint] IDENTITY(1,1) NOT NULL,
 	[HostName] [varchar](256) NOT NULL,
 	[ProcID] [bigint] NOT NULL,
-	[SourceFileName] [varchar](256) NOT NULL,
+	[SourceFileName] [varchar](245) NOT NULL,
 	[SourceFileSize] [bigint] NOT NULL,
 	[SourceFileTimestamp] [datetime] NOT NULL,
 	[StartTime] [datetime] NOT NULL,
@@ -106,8 +145,8 @@ CREATE TABLE [dbo].[Run](
  CONSTRAINT [Run_PK] PRIMARY KEY CLUSTERED 
 (
 	[RunID] ASC
-)WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON, OPTIMIZE_FOR_SEQUENTIAL_KEY = OFF) ON [PRIMARY]
-) ON [PRIMARY]
+)WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON, OPTIMIZE_FOR_SEQUENTIAL_KEY = OFF) ON [SECONDARY]
+) ON [SECONDARY]
 GO
 
 
@@ -130,8 +169,8 @@ CREATE TABLE [dbo].[Activity](
 (
 	[RunID] ASC,
 	[ActivityID] ASC
-)WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON, OPTIMIZE_FOR_SEQUENTIAL_KEY = OFF) ON [PRIMARY]
-) ON [PRIMARY]
+)WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON, OPTIMIZE_FOR_SEQUENTIAL_KEY = OFF) ON [SECONDARY]
+) ON [SECONDARY]
 GO
 
 CREATE UNIQUE INDEX Activity_AK ON [Activity] (ActivityID);
@@ -147,14 +186,3 @@ REFERENCES [dbo].[Namespace] ([NamespaceID])
 ON UPDATE CASCADE
 ON DELETE CASCADE
 GO
-
--- PageRevisionText holds actual texts of some articles. A row is expected
--- here if the TextAvailable column in the PageRevision table is not zero.
-CREATE TABLE PageRevisionText (
-	NamespaceID INT NOT NULL,
-	PageID BIGINT NOT NULL,
-	PageRevisionID BIGINT NOT NULL,
-	ArticleText TEXT NOT NULL
-) ON SECONDARY;
-CREATE UNIQUE CLUSTERED INDEX PageRevisionText_PK ON PageRevisionText(NamespaceID, PageID, PageRevisionID) ON [SECONDARY];
-
