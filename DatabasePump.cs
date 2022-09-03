@@ -28,6 +28,7 @@ namespace WikiReader
     {
         long _runID;
 
+        private static long previousPendingRevisions = -1;
 
         public long RunID
         {
@@ -180,6 +181,7 @@ namespace WikiReader
             completeActivity.Parameters.AddWithValue("@ActivityID", activityID);
             completeActivity.Parameters.AddWithValue("@RunID", _runID);
             completeActivity.Parameters.AddWithValue("@CompletedCount", completedCount ?? SqlInt64.Null);
+            completeActivity.CommandTimeout = 120;
 
             if ( result == null ) 
             {
@@ -202,13 +204,26 @@ namespace WikiReader
         /// <param name="i">reference to an object implementing Insertable; we'll enqueue it and add it whne we have threads</param>
         public void Enqueue(IInsertable i, IInsertable? previous, ref long running, ref long queued, ref long pendingRevisions)
         {
+
             // backpressure
             int pauses = 0;
             while (Interlocked.Read(ref _running) >= 5 || Interlocked.Read(ref _queued) >= 100)
             {
+                // report every 10 pauses == 1 second
                 if (pauses++ % 10 == 0)
-                    System.Console.WriteLine($"Backpressure: {Interlocked.Read(ref _running)} running, {Interlocked.Read(ref _queued)} queued, {_pendingRevisions} pending revisions");
-                Thread.Sleep(100);
+                {
+                    string main = $"Backpressure: {Interlocked.Read(ref _running)} running, {Interlocked.Read(ref _queued)} queued, {_pendingRevisions} pending revisions";
+                    if (previousPendingRevisions != -1)
+                    {
+                        long delta = _pendingRevisions - previousPendingRevisions;
+                        System.Console.WriteLine($"{main} ({delta:+#;-#;0})");
+                    }
+                    else
+                        System.Console.WriteLine(main);
+
+                    previousPendingRevisions = _pendingRevisions;
+                }
+                Thread.Sleep(100);  // 100 milliseconds
             }
 
             // get a new connection; use an ApplicationName parameter to indicate who we are
@@ -287,7 +302,7 @@ namespace WikiReader
             Interlocked.Decrement(ref _queued);
 
             // add to the running count
-            Interlocked.Increment( ref _running );
+            Interlocked.Increment(ref _running);
 
             try
             {

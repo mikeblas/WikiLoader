@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Text;
-using System.Threading.Tasks;
+
 using System.Xml;
 using System.IO;
 using System.Diagnostics;
@@ -14,11 +13,18 @@ namespace WikiReader
     class WikiLoaderProgram
     {
         readonly DatabasePump _pump;
+        static private bool sigintReceived = false;
 
         WikiLoaderProgram()
         {
             _pump = new DatabasePump();
             DatabasePump.TestConnection();
+
+            Console.CancelKeyPress += delegate (object? sender, ConsoleCancelEventArgs e) {
+                e.Cancel = true;
+                WikiLoaderProgram.sigintReceived = true;
+                Console.WriteLine("CTRL+C received! Shutting down ...");
+            };
         }
 
         static void Main(string[] args)
@@ -28,7 +34,7 @@ namespace WikiReader
             // string fileName = @"f:\junk\enwiki-latest-pages-meta-history10.xml-p000925001p000972034";
             // string fileName = @"f:\junk\enwiki-latest-pages-meta-history19.xml-p009225001p009575994";
             // string fileName = @"f:\junk\enwiki-latest-pages-meta-history3.xml-p000039229p000043715";
-            string fileName = @"f:\wiki\20220820\unzipped\enwiki-20220820-stub-meta-history1.xml";
+            string fileName = @"f:\wiki\20220820\unzipped\enwiki-20220820-stub-meta-history2.xml";
             if (args.Length >= 1)
                 fileName = args[0];
 
@@ -55,7 +61,7 @@ namespace WikiReader
         void Parse(string fileName)
         {
             FileStream s = File.OpenRead(fileName);
-            XmlReader reader = XmlReader.Create(s, null);
+            using XmlReader reader = XmlReader.Create(s, null);
 
             string? pageName = null;
             string? redirectTitle = null;
@@ -92,11 +98,12 @@ namespace WikiReader
             long currentActivity = -1;
             Page? previousPage = null;
 
-            while (reader.Read())
+            bool quitNow = false;
+
+            while (!quitNow && reader.Read())
             {
                 if (reader.IsStartElement())
                 {
-                    // Console.Write('S');
                     switch (reader.Name)
                     {
                         case "minor":
@@ -232,7 +239,6 @@ namespace WikiReader
                 }
                 else if (reader.NodeType == XmlNodeType.EndElement)
                 {
-                    // Console.Write('E');
                     switch (reader.Name)
                     {
                         case "page":
@@ -274,6 +280,9 @@ namespace WikiReader
                             minorRevisionCount = 0;
                             pageName = null;
                             redirectTitle = null;
+
+                            if (WikiLoaderProgram.sigintReceived)
+                                quitNow = true;
                             break;
 
                         case "revision":
@@ -361,7 +370,6 @@ namespace WikiReader
                     }
                 }
             }
-            reader.Close();
 
             // wait for the pump to complete before spewing stats
             _pump.WaitForComplete();

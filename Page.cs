@@ -1,8 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Text;
 using System.Data;
-using System.Data.Sql;
 using System.Data.SqlClient;
 using System.Threading;
 using System.Diagnostics;
@@ -52,7 +50,7 @@ namespace WikiReader
         /// <summary>
         /// Map of revisions from RevisionID to the PageRevision at that ID
         /// </summary>
-        private readonly SortedList<Int64, PageRevision> revisions = new ();
+        private readonly SortedList<Int64, PageRevision> _revisions = new ();
 
         private int _usersAdded = 0;
         private int _usersAlready = 0;
@@ -79,21 +77,21 @@ namespace WikiReader
         /// <param name="pr"></param>
         public void AddRevision(PageRevision pr)
         {
-            if (revisions.ContainsKey(pr.RevisionId))
+            if (_revisions.ContainsKey(pr.RevisionId))
             {
                 System.Console.WriteLine($"Page {_pageName} already has revision {pr.RevisionId}");
-                System.Console.WriteLine($"current: {revisions[pr.RevisionId].TimeStamp} with id {revisions[pr.RevisionId].RevisionId}, parent id {revisions[pr.RevisionId].ParentRevisionId}");
+                System.Console.WriteLine($"current: {_revisions[pr.RevisionId].TimeStamp} with id {_revisions[pr.RevisionId].RevisionId}, parent id {_revisions[pr.RevisionId].ParentRevisionId}");
                 System.Console.WriteLine($"    new: {pr.TimeStamp} with id {pr.RevisionId}, parent id {pr.ParentRevisionId}");
             }
-            revisions.Add(pr.RevisionId, pr);
+            _revisions.Add(pr.RevisionId, pr);
 
             // always keep first and last revisions
             // keep every 100th revision
             // keep the most recent revision
-            int nCandidate = revisions.Count - 2;
+            int nCandidate = _revisions.Count - 2;
             if (nCandidate > 0 && nCandidate % 100 != 0)
             {
-                revisions.Values[nCandidate].Text = null;
+                _revisions.Values[nCandidate].Text = null;
             }
         }
 
@@ -106,7 +104,7 @@ namespace WikiReader
         /// <param name="progress">InsertableProgress interface for progress callbacks</param>
         public void Insert(IInsertable? previous, DatabasePump pump, SqlConnection conn, IInsertableProgress progress)
         {
-            progress.AddPendingRevisions(revisions.Count);
+            progress.AddPendingRevisions(_revisions.Count);
 
             // first, insert all the users
             BulkInsertUsers(pump, conn);
@@ -116,11 +114,9 @@ namespace WikiReader
 
             // then, insert the revisions
             SelectAndInsertRevisions(pump, progress, previous, conn);
-            //BulkInsertRevisions(pump, progress, previous, conn);
 
             // insert the text that we have
             BulkInsertRevisionText(pump, conn);
-
 
             System.Console.WriteLine(
                 $"{_pageName}\n" +
@@ -150,14 +146,14 @@ namespace WikiReader
             try
             {
                 // bulk insert into the temporary table
-                UserDataReader udr = new(_insertedUserSet, revisions.Values);
+                UserDataReader udr = new(_insertedUserSet, _revisions.Values);
                 SqlBulkCopy sbc = new(conn);
 
                 bulkActivity = pump.StartActivity("Bulk Insert Users", _namespaceId, _pageId, udr.Count);
 
                 sbc.DestinationTableName = tempTableName;
-                sbc.ColumnMappings.Add(new SqlBulkCopyColumnMapping("UserID", "UserID"));
-                sbc.ColumnMappings.Add(new SqlBulkCopyColumnMapping("UserName", "UserName"));
+                sbc.ColumnMappings.Add("UserID", "UserID");
+                sbc.ColumnMappings.Add("UserName", "UserName");
                 Trace.Assert(conn.State == ConnectionState.Open);
                 sbc.WriteToServer(udr);
                 Trace.Assert(conn.State == ConnectionState.Open);
@@ -177,6 +173,7 @@ namespace WikiReader
                             $"USING [{tempTableName}] AS SRC ON [User].UserID = SRC.UserID " +
                             "WHEN NOT MATCHED THEN " +
                             " INSERT (UserID, UserName) VALUES (SRC.UserID, SRC.UserName);", conn);
+                        tableMerge.CommandTimeout = 300;
                         _usersAdded = tableMerge.ExecuteNonQuery();
                         _usersAlready = udr.Count - _usersAdded;
                         mergeException = null;
@@ -244,7 +241,7 @@ namespace WikiReader
         private void BulkInsertRevisionText(DatabasePump pump, SqlConnection conn)
         {
             // build our data reader first
-            PageRevisionTextDataReader prtdr = new(_namespaceId, _pageId, revisions.Values);
+            PageRevisionTextDataReader prtdr = new(_namespaceId, _pageId, _revisions.Values);
 
             long bulkActivity = pump.StartActivity("Bulk Insert Text", _namespaceId, _pageId, prtdr.Count);
 
@@ -361,12 +358,15 @@ namespace WikiReader
 
         private void SelectAndInsertRevisions(DatabasePump pump, IInsertableProgress progress, IInsertable? previous, SqlConnection conn)
         {
+            long checkActivityID = pump.StartActivity("Check existing PageRevisions", null, _pageId, _revisions.Count);
+
             // build a hash set of all the known revisions of this page
             HashSet<Int64> knownRevisions = new();
 
             using var cmdSelect = new SqlCommand("select PageRevisionID FROM PageRevision WHERE PageID = @PageID", conn);
             cmdSelect.Parameters.AddWithValue("@NamespaceID", _namespaceId);
             cmdSelect.Parameters.AddWithValue("@PageID", _pageId);
+            cmdSelect.CommandTimeout = 3600;
 
             using (var reader = cmdSelect.ExecuteReader())
             {
@@ -374,18 +374,9 @@ namespace WikiReader
                     knownRevisions.Add((Int64)reader["PageRevisionID"]);
             }
 
-            // now insert all that we have which do not match
-            using var cmdInsert = new SqlCommand(
-                "  INSERT INTO [PageRevision] " +
-                "       (NamespaceID, PageID, PageRevisionID, ParentPageRevisionID, " +
-                "        RevisionWhen, ContributorID, IPAddress, Comment, " +
-                "        TextAvailable, IsMinor, ArticleTextLength, TextDeleted, UserDeleted) " +
-                " VALUES " +
-                "       (@NamespaceID, @PageID, @PageRevisionID, @ParentPageRevisionID, " +
-                "        @RevisionWhen, @ContributorID, @IPAddress, @Comment, " +
-                "        @TextAvailable, @IsMinor, @ArticleTextLength, @TextDeleted, @UserDeleted)", conn);
+            SortedList<Int64, PageRevision> neededRevisions = new();
 
-            foreach ((Int64 revID, var rev) in revisions)
+            foreach ((Int64 revID, var rev) in _revisions)
             {
                 if (knownRevisions.Contains(revID))
                 {
@@ -394,48 +385,89 @@ namespace WikiReader
                     continue;
                 }
 
-                object contributor = DBNull.Value;
-                object ipAddress = DBNull.Value;
-                object contributorID = DBNull.Value;
-
-                if (rev.Contributor != null)
-                {
-                    if (!rev.Contributor.IsAnonymous)
-                        contributorID = rev.Contributor.ID;
-                    else
-                        ipAddress = rev.Contributor.IPAddress;
-                }
-
-                cmdInsert.Parameters.Clear();
-                cmdInsert.Parameters.AddWithValue("@NamespaceID", _namespaceId);
-                cmdInsert.Parameters.AddWithValue("@PageID", _pageId);
-                cmdInsert.Parameters.AddWithValue("@PageRevisionID", revID);
-                cmdInsert.Parameters.AddWithValue("@ParentPageRevisionID", rev.ParentRevisionId);
-                cmdInsert.Parameters.AddWithValue("@RevisionWhen", rev.TimeStamp);
-                cmdInsert.Parameters.AddWithValue("@ContributorID", contributorID);
-                cmdInsert.Parameters.AddWithValue("@IPAddress", ipAddress);
-                cmdInsert.Parameters.AddWithValue("@Comment", rev.Comment == null ? DBNull.Value : rev.Comment);
-                cmdInsert.Parameters.AddWithValue("@TextAvailable", rev.Text != null);
-                cmdInsert.Parameters.AddWithValue("@IsMinor", rev.IsMinor);
-                cmdInsert.Parameters.AddWithValue("@ArticleTextLength", rev.TextLength);
-                cmdInsert.Parameters.AddWithValue("@TextDeleted", rev.TextDeleted);
-                cmdInsert.Parameters.AddWithValue("@UserDeleted", rev.Contributor == null);
-
-                try
-                {
-                    cmdInsert.ExecuteNonQuery();
-                    progress.CompleteRevisions(1);
-                    _revsAdded += 1;
-                }
-                catch (SqlException sex)
-                {
-                    Console.WriteLine($"Exception! {sex}");
-                }
+                neededRevisions.Add(revID, rev);
             }
+
+            pump.CompleteActivity(checkActivityID, _revisions.Count, "Processed");
+
+
+            BulkInsertPageRevisions(pump, progress, previous, neededRevisions, conn);
         }
 
 
-        private void BulkInsertRevisions(DatabasePump pump, IInsertableProgress progress, IInsertable? previous, SqlConnection conn)
+        private void BulkInsertPageRevisions(DatabasePump pump, IInsertableProgress progress, IInsertable? previous, SortedList<Int64, PageRevision> neededRevisions, SqlConnection conn)
+        {
+            long bulkActivityID = -1;
+
+            // now, bulk insert the ones we didin't find
+            try
+            {
+                if (neededRevisions.Count > 0)
+                {
+                    bulkActivityID = pump.StartActivity("Bulk Insert PageRevisions", _namespaceId, _pageId, neededRevisions.Count);
+
+                    // bulk insert into the temporary table
+                    PageRevisionDataReader prdr = new(_namespaceId, _pageId, neededRevisions.Values);
+                    var sbc = new SqlBulkCopy(conn);
+                    sbc.BulkCopyTimeout = 3600;
+
+                    sbc.DestinationTableName = "PageRevision";
+                    sbc.ColumnMappings.Add(new SqlBulkCopyColumnMapping("PageID", "PageID"));
+                    sbc.ColumnMappings.Add(new SqlBulkCopyColumnMapping("NamespaceID", "NamespaceID"));
+                    sbc.ColumnMappings.Add(new SqlBulkCopyColumnMapping("PageRevisionID", "PageRevisionID"));
+                    sbc.ColumnMappings.Add(new SqlBulkCopyColumnMapping("ParentPageRevisionID", "ParentPageRevisionID"));
+                    sbc.ColumnMappings.Add(new SqlBulkCopyColumnMapping("RevisionWhen", "RevisionWhen"));
+                    sbc.ColumnMappings.Add(new SqlBulkCopyColumnMapping("ContributorID", "ContributorID"));
+                    sbc.ColumnMappings.Add(new SqlBulkCopyColumnMapping("Comment", "Comment"));
+                    sbc.ColumnMappings.Add(new SqlBulkCopyColumnMapping("IsMinor", "IsMinor"));
+                    sbc.ColumnMappings.Add(new SqlBulkCopyColumnMapping("ArticleTextLength", "ArticleTextLength"));
+                    sbc.ColumnMappings.Add(new SqlBulkCopyColumnMapping("UserDeleted", "UserDeleted"));
+                    sbc.ColumnMappings.Add(new SqlBulkCopyColumnMapping("TextDeleted", "TextDeleted"));
+                    sbc.ColumnMappings.Add(new SqlBulkCopyColumnMapping("IPAddress", "IPAddress"));
+                    sbc.ColumnMappings.Add(new SqlBulkCopyColumnMapping("TextAvailable", "TextAvailable"));
+
+                    Trace.Assert(conn.State == ConnectionState.Open);
+                    sbc.WriteToServer(prdr);
+                    Trace.Assert(conn.State == ConnectionState.Open);
+
+                    pump.CompleteActivity(bulkActivityID, null, null);
+                    bulkActivityID = -1;
+
+                    progress.CompleteRevisions(neededRevisions.Count);
+                    _revsAdded += neededRevisions.Count;
+                }
+
+                // wait until the previous revision is done, if we've got one
+                if (previous != null)
+                {
+                    // Console.WriteLine($"[[{(this as IInsertable).ObjectName}]] waiting on [[{previous.ObjectName}]]");
+
+                    ManualResetEvent mre = previous.GetCompletedEvent();
+                    mre.WaitOne();
+                    while (!mre.WaitOne(1000))
+                        Console.WriteLine($"[[{(this as IInsertable).ObjectName}]] is waiting on [[{previous.ObjectName}]]");
+                }
+                else
+                {
+                    // Console.WriteLine($"[[{(this as IInsertable).ObjectName}]] not waiting, no previous");
+                }
+            }
+            catch (Exception ex)
+            {
+                if (bulkActivityID != -1)
+                {
+                    pump.CompleteActivity(bulkActivityID, null, ex.Message);
+                    bulkActivityID = -1;
+                }
+            }
+            finally
+            {
+                // signal the next in the chain of waiters
+                completeEvent.Set();
+            }
+        }
+
+        private void BulkMergeRevisions(DatabasePump pump, IInsertableProgress progress, IInsertable? previous, SqlConnection conn)
         {
             // build a unique temporary table name
             String tempTableName = $"#Revisions_{System.Environment.MachineName}_{Environment.CurrentManagedThreadId}";
@@ -462,7 +494,7 @@ namespace WikiReader
 
             try {
                 // bulk insert into the temporary table
-                PageRevisionDataReader prdr = new(_namespaceId, _pageId, revisions.Values);
+                PageRevisionDataReader prdr = new(_namespaceId, _pageId, _revisions.Values);
                 var sbc = new SqlBulkCopy(conn);
 
                 bulkActivityID = pump.StartActivity("Bulk Insert PageRevisions", _namespaceId, _pageId, prdr.Count);
@@ -651,7 +683,7 @@ namespace WikiReader
         /// </summary>
         int IInsertable.RevisionCount
         {
-            get { return revisions.Count; }
+            get { return _revisions.Count; }
         }
     }
 

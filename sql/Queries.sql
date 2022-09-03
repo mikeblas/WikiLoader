@@ -62,7 +62,7 @@ SELECT PageRevision.NamespaceID, PageRevision.PageID, PageRevision.PageRevisionI
 			   AND PageRevisionText.NamespaceID = PageRevision.NamespaceID
 			   AND PageRevisionText.PageRevisionID = PageRevision.PageRevisionID
 			   )
-ORDER BY 1, 2, 3
+ORDER BY 1, 2, 3;
 
 
 
@@ -194,4 +194,3 @@ select * from PageRevision WHERE Comment IS NULL;
 
 select * from Page ORDER BY PageID
 
-DBCC CHECKDB
