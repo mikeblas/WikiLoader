@@ -375,7 +375,7 @@ namespace WikiReader
             _pump.WaitForComplete();
 
             // done, spew stats!
-            System.Console.WriteLine($"{totalPages} total pages read, {_pump.getInsertedPages()} inserted");
+            System.Console.WriteLine($"{totalPages} total pages read, {_pump.InsertedPages()} inserted");
             System.Console.WriteLine($"{totalRevisions} total revisions");
             System.Console.WriteLine($"{totalMinorRevisions} total minor revisions");
             System.Console.WriteLine($"{contributorMap.Count} distinct contributors");

@@ -1,11 +1,7 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.Data;
-using System.Diagnostics;
-using System.Data.Sql;
 using System.Data.SqlTypes;
 using System.Data.SqlClient;
-using System.Collections.Concurrent;
 using System.Threading;
 using System.IO;
 
@@ -138,7 +134,7 @@ namespace WikiReader
             }
             else
             {
-                string str = strResult.Substring(0, Math.Min(strResult.Length, 1024));
+                string str = strResult[..Math.Min(strResult.Length, 1024)];
                 updateRun.Parameters.AddWithValue("@Result", str);
             }
             updateRun.ExecuteNonQuery();
@@ -181,7 +177,7 @@ namespace WikiReader
             completeActivity.Parameters.AddWithValue("@ActivityID", activityID);
             completeActivity.Parameters.AddWithValue("@RunID", _runID);
             completeActivity.Parameters.AddWithValue("@CompletedCount", completedCount ?? SqlInt64.Null);
-            completeActivity.CommandTimeout = 120;
+            completeActivity.CommandTimeout = 300;
 
             if ( result == null ) 
             {
@@ -189,7 +185,7 @@ namespace WikiReader
             }
             else
             {
-                string str = result.Substring(0, Math.Min(result.Length, 1024));
+                string str = result[..Math.Min(result.Length, 1024)];
                 completeActivity.Parameters.AddWithValue("@Result", str);
             }
 
@@ -326,7 +322,7 @@ namespace WikiReader
             return;
         }
 
-        public int getInsertedPages()
+        public int InsertedPages()
         {
             return _insertedPages;
         }

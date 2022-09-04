@@ -208,7 +208,7 @@ namespace WikiReader
                     }
                     finally
                     {
-                        pump.CompleteActivity(mergeActivity, _usersAdded, (mergeException == null) ? null : mergeException.Message);
+                        pump.CompleteActivity(mergeActivity, _usersAdded, mergeException?.Message);
                     }
 
                 }
@@ -585,7 +585,7 @@ namespace WikiReader
                     }
                     finally
                     {
-                        pump.CompleteActivity(mergeActivity, _revsAdded, (mergeException == null) ? null : mergeException.Message);
+                        pump.CompleteActivity(mergeActivity, _revsAdded, mergeException?.Message);
                     }
                 }
                 if (mergeException != null)
