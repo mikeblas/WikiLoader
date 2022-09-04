@@ -35,6 +35,9 @@ namespace WikiReader
         /// </summary>
         readonly Int64 _pageId = 0;
 
+        readonly private Int64 _runId;
+        readonly private Int64 _filePosition;
+
         readonly ManualResetEvent completeEvent = new(false);
 
         public ManualResetEvent GetCompletedEvent()
@@ -63,12 +66,14 @@ namespace WikiReader
         /// <param name="namespaceId">namespaceId where this page lives</param>
         /// <param name="pageId">pageID for this page</param>
         /// <param name="pageName">name of this page</param>
-        public Page(int namespaceId, Int64 pageId, string pageName, string? redirectName)
+        public Page(int namespaceId, Int64 pageId, string pageName, string? redirectName, Int64 runId, Int64 filePosition)
         {
             _namespaceId = namespaceId;
             _pageName = pageName;
             _pageId = pageId;
             _redirectTitle = redirectName;
+            _runId = runId;
+            _filePosition = filePosition;
         }
 
         /// <summary>
@@ -122,6 +127,45 @@ namespace WikiReader
                 $"{_pageName}\n" +
                 $"   {_revsAdded} revisions added, {_revsAlready} revisions exist\n" +
                 $"   {_usersAdded} users added, {_usersAlready} users exist");
+
+            UpdateProgress(conn);
+        }
+
+        private void UpdateProgress(SqlConnection conn)
+        {
+            // try to insert first
+
+            using var insertCommand = new SqlCommand(
+                "WITH X AS (" + 
+                "    SELECT * FROM (VALUES (@RunID, GETUTCDATE(), @FilePosition, @PageID)) AS X(RunID, ReportTime, FilePosition, PageID) " +
+                ") " +
+                "INSERT RunProgress (RunID, ReportTime, FilePosition, PageID) " +
+                "SELECT RunID, ReportTime, FilePosition, PageID " +
+                "  FROM X " +
+                " WHERE NOT EXISTS (SELECT RunID FROM RunProgress WHERE RunID = X.RunID)", conn);
+            insertCommand.Parameters.AddWithValue("@RunID", _runId);
+            insertCommand.Parameters.AddWithValue("@FilePosition", _filePosition);
+            insertCommand.Parameters.AddWithValue("@PageID", _pageId);
+
+            int rows = insertCommand.ExecuteNonQuery();
+
+            // not inserted, so a row exists ... let's update
+            if (rows == 0)
+            {
+                using var updateCommand = new SqlCommand(
+                    "UPDATE RunProgress " + 
+                    "   SET FilePosition = @FilePosition, " +
+                    "       ReportTime = GETUTCDATE(), " + 
+                    "       PageID = @PageID" +
+                    " WHERE FilePosition < @FilePosition " +
+                    "   AND RunID = @RunID", conn);
+
+                updateCommand.Parameters.AddWithValue("@RunID", _runId);
+                updateCommand.Parameters.AddWithValue("@FilePosition", _filePosition);
+                updateCommand.Parameters.AddWithValue("@PageID", _pageId);
+
+                updateCommand.ExecuteNonQuery();
+            }
         }
 
         /// <summary>

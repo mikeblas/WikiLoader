@@ -19,9 +19,9 @@ namespace WikiReader
         /// <summary>
         /// map of namespace IDs (as integers) to NamespaceInfo objects
         /// </summary>
-        private Dictionary<Int64, NamespaceInfo> _namespaceMap;
+        readonly private Dictionary<Int64, NamespaceInfo> _namespaceMap;
 
-        ManualResetEvent completeEvent = new(false);
+        readonly private ManualResetEvent completeEvent = new(false);
 
         /// <summary>
         /// Initializes a new NamespaceInfos collection
@@ -77,7 +77,7 @@ namespace WikiReader
         /// Takes a SqlConnection and inserts the collection into it.
         /// </summary>
         /// <param name="conn">SqlConnection to write into</param>
-        void IInsertable.Insert(IInsertable? previous, DatabasePump pump, SqlConnection conn, IInsertableProgress progress)
+        public void Insert(IInsertable? previous, DatabasePump pump, SqlConnection conn, IInsertableProgress progress)
         {
             // count of rows actually inserted
             int inserts = 0;

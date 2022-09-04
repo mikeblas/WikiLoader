@@ -4,7 +4,6 @@ using System.Collections.Generic;
 using System.Xml;
 using System.IO;
 using System.Diagnostics;
-using System.Threading;
 
 // https://en.wikipedia.org/wiki/Wikipedia:Database_download#XML_schema
 
@@ -242,7 +241,7 @@ namespace WikiReader
                     switch (reader.Name)
                     {
                         case "page":
-                            Debug.Assert(pageName != null, "Must have valuid page name by now");
+                            Debug.Assert(pageName != null, "Must have valid page name by now");
 
                             // grab a copy of the page
                             // clean it up and push it to the pump
@@ -327,7 +326,7 @@ namespace WikiReader
                             }
                             else
                             {
-                                Page newPage = new(namespaceId, pageId, pageName, redirectTitle);
+                                Page newPage = new(namespaceId, pageId, pageName, redirectTitle, _pump.RunID, s.Position);
                                 newPage.AddRevision(rev);
                                 pageMap.Add(pageName, newPage);
                             }

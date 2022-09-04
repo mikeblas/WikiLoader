@@ -39,14 +39,13 @@ namespace WikiReader
         {
             public IInsertable _i;
             public IInsertable? _previous;
-            public SqlConnection _conn;
+            public SqlConnection? _conn;
             public IInsertableProgress _progress;
             public DatabasePump _pump;
 
-            public CallerInfo(DatabasePump pump, SqlConnection conn, IInsertable i, IInsertable? previous, IInsertableProgress progress)
+            public CallerInfo(DatabasePump pump, IInsertable i, IInsertable? previous, IInsertableProgress progress)
             {
                 _pump = pump;
-                _conn = conn;
                 _i = i;
                 _previous = previous;
                 _progress = progress;
@@ -54,8 +53,55 @@ namespace WikiReader
 
             public void Dispose()
             {
-                _conn.Close();
-                _conn.Dispose();
+                if (_conn != null)
+                {
+                    _conn.Close();
+                    _conn.Dispose();
+                }
+                _conn = null;
+            }
+
+            public void BuildConnection()
+            {
+                // get a new connection; use an ApplicationName parameter to indicate who we are
+                string totalConnectionString = $"{ConnectionString};Application Name=WikiLoader{Environment.CurrentManagedThreadId};";
+
+                _conn = null;
+                try
+                {
+                    _conn = new SqlConnection(totalConnectionString);
+                }
+                catch (ArgumentException)
+                {
+                    // something wrong, so fall back to a safer string
+                    System.Console.WriteLine($"Connection failed. Connection string = \"{totalConnectionString}\"");
+                    _conn = new SqlConnection(ConnectionString);
+                }
+
+                for (int retries = 10; retries > 0; retries--)
+                {
+                    try
+                    {
+                        _conn.Open();
+                        break;
+                    }
+                    catch (SqlException sex)
+                    {
+                        // connection exception?
+                        if (sex.Number == 64 && sex.Source == ".Net SqlClient Data Provider")
+                        {
+                            System.Console.WriteLine($"{sex.Source}: {sex.Number}, {sex.Message}\nTrying again ({retries} retries left)");
+                            Thread.Sleep(1000);
+                            continue;
+                        }
+
+                        // don't know that exception yet, just rethrow
+                        throw sex;
+                    }
+                }
+
+                if (_conn.State != ConnectionState.Open)
+                    throw new Exception("Couldn't connect");
             }
         }
 
@@ -200,7 +246,6 @@ namespace WikiReader
         /// <param name="i">reference to an object implementing Insertable; we'll enqueue it and add it whne we have threads</param>
         public void Enqueue(IInsertable i, IInsertable? previous, ref long running, ref long queued, ref long pendingRevisions)
         {
-
             // backpressure
             int pauses = 0;
             while (Interlocked.Read(ref _running) >= 5 || Interlocked.Read(ref _queued) >= 100)
@@ -222,49 +267,9 @@ namespace WikiReader
                 Thread.Sleep(100);  // 100 milliseconds
             }
 
-            // get a new connection; use an ApplicationName parameter to indicate who we are
-            string totalConnectionString = $"{ConnectionString};Application Name=WikiLoader{Environment.CurrentManagedThreadId};";
-
-            SqlConnection? conn = null;
-            try
-            {
-                conn = new SqlConnection(totalConnectionString);
-            }
-            catch (ArgumentException)
-            {
-                // something wrong, so fall back to a safer string
-                System.Console.WriteLine($"Connection failed. Connection string = \"{totalConnectionString}\"");
-                conn = new SqlConnection(ConnectionString);
-            }
-           
-            for (int retries = 10; retries > 0; retries--)
-            {
-                try
-                {
-                    conn.Open();
-                    break;
-                }
-                catch (SqlException sex)
-                {
-                    // connection exception?
-                    if (sex.Number == 64 && sex.Source == ".Net SqlClient Data Provider")
-                    {
-                        System.Console.WriteLine($"{sex.Source}: {sex.Number}, {sex.Message}\nTrying again ({retries} retries left)");
-                        Thread.Sleep(1000);
-                        continue;
-                    }
-
-                    // don't know that exception yet, just rethrow
-                    throw sex;
-                }
-            }
-
-            if (conn.State != ConnectionState.Open)
-                throw new Exception("Couldn't connect");
-
             // create a CallerInfo instance with the Insertable and our connection
             // disposable connection object is now owned by CallerInfo object
-            CallerInfo ci = new(this, conn, i, previous, this);
+            CallerInfo ci = new(this, i, previous, this);
 
             // queue it up! 
             Interlocked.Increment(ref _queued);
@@ -303,6 +308,9 @@ namespace WikiReader
             try
             {
                 // go work the insertion
+                ci.BuildConnection();
+                if (ci._conn == null)
+                    throw new Exception("Couldn't connect");
                 ci._i.Insert(ci._previous, ci._pump, ci._conn, ci._progress);
             }
             finally

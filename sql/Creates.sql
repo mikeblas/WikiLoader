@@ -129,6 +129,7 @@ ON UPDATE CASCADE
 ON DELETE CASCADE
 GO
 
+
 -- A Run is an instance of any read-write application using this database. An entry in
 -- Run must be made to identify application instances so they can log their work in the
 -- Activity table.
@@ -147,6 +148,22 @@ CREATE TABLE [dbo].[Run](
 	[RunID] ASC
 )WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON, OPTIMIZE_FOR_SEQUENTIAL_KEY = OFF) ON [SECONDARY]
 ) ON [SECONDARY]
+GO
+
+
+-- progress made in a run so far
+CREATE TABLE RunProgress
+(
+RunID BIGINT CONSTRAINT RunProgress_PK PRIMARY KEY CLUSTERED,
+ReportTime DATETIME NOT NULL,
+FilePosition BIGINT NOT NULL,
+PageID BIGINT NOT NULL,
+);
+
+ALTER TABLE [dbo].[RunProgress]  WITH CHECK ADD  CONSTRAINT [FK_RunProgress_Run] FOREIGN KEY([RunID])
+REFERENCES [dbo].[Run] ([RunID])
+ON UPDATE CASCADE
+ON DELETE CASCADE
 GO
 
 
