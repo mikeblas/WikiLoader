@@ -1,13 +1,12 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Data;
-using System.Data.SqlClient;
-using System.Threading;
-using System.Diagnostics;
-using System.Runtime.InteropServices.ObjectiveC;
-
-namespace WikiReader
+﻿namespace WikiReader
 {
+    using System;
+    using System.Collections.Generic;
+    using System.Data;
+    using System.Data.SqlClient;
+    using System.Diagnostics;
+    using System.Threading;
+
     /// <summary>
     /// Class that represents a single page. It directly holds the page name, the page's namespaceID,
     /// and the pageID. It contains a list of zero or more revisions of the page,
@@ -84,9 +83,9 @@ namespace WikiReader
         {
             if (_revisions.ContainsKey(pr.RevisionId))
             {
-                System.Console.WriteLine($"Page {_pageName} already has revision {pr.RevisionId}");
-                System.Console.WriteLine($"current: {_revisions[pr.RevisionId].TimeStamp} with id {_revisions[pr.RevisionId].RevisionId}, parent id {_revisions[pr.RevisionId].ParentRevisionId}");
-                System.Console.WriteLine($"    new: {pr.TimeStamp} with id {pr.RevisionId}, parent id {pr.ParentRevisionId}");
+                Console.WriteLine($"Page {_pageName} already has revision {pr.RevisionId}");
+                Console.WriteLine($"current: {_revisions[pr.RevisionId].TimeStamp} with id {_revisions[pr.RevisionId].RevisionId}, parent id {_revisions[pr.RevisionId].ParentRevisionId}");
+                Console.WriteLine($"    new: {pr.TimeStamp} with id {pr.RevisionId}, parent id {pr.ParentRevisionId}");
             }
             _revisions.Add(pr.RevisionId, pr);
 
@@ -123,7 +122,7 @@ namespace WikiReader
             // insert the text that we have
             BulkInsertRevisionText(pump, conn);
 
-            System.Console.WriteLine(
+            Console.WriteLine(
                 $"{_pageName}\n" +
                 $"   {_revsAdded} revisions added, {_revsAlready} revisions exist\n" +
                 $"   {_usersAdded} users added, {_usersAlready} users exist");
@@ -227,27 +226,27 @@ namespace WikiReader
                     {
                         if (sex.Number == 1205)
                         {
-                            System.Console.WriteLine($"{_pageName}: Deadlock encountered during USER merge of {udr.Count} rows. Retry {retries}");
+                            Console.WriteLine($"{_pageName}: Deadlock encountered during USER merge of {udr.Count} rows. Retry {retries}");
                             mergeException = sex;
                             Thread.Sleep(2500);
                             continue;
                         }
                         else if (sex.Number == -2)
                         {
-                            System.Console.WriteLine($"{_pageName}: Timeout encountered during USER merge of {udr.Count} rows. Retry {retries}");
+                            Console.WriteLine($"{_pageName}: Timeout encountered during USER merge of {udr.Count} rows. Retry {retries}");
                             mergeException = sex;
                             Thread.Sleep(2500);
                             continue;
                         }
                         else
                         {
-                            System.Console.WriteLine($"{_pageName}: Exception during USER merge of {udr.Count} rows. {sex.Number}: {sex.Source}\n{sex.Message}");
+                            Console.WriteLine($"{_pageName}: Exception during USER merge of {udr.Count} rows. {sex.Number}: {sex.Source}\n{sex.Message}");
                             throw sex;
                         }
                     }
                     catch (InvalidOperationException ioe)
                     {
-                        System.Console.WriteLine($"{_pageName}: Exception during PageRevision merge of {udr.Count} rows. {ioe.Message}\n{ioe.StackTrace}");
+                        Console.WriteLine($"{_pageName}: Exception during PageRevision merge of {udr.Count} rows. {ioe.Message}\n{ioe.StackTrace}");
                         throw ioe;
                     }
                     finally
@@ -258,7 +257,7 @@ namespace WikiReader
                 }
                 if (mergeException != null)
                 {
-                    System.Console.WriteLine($"{_pageName}: USER merge failed 10 times: {mergeException.Number}, {mergeException.Source}\n{mergeException.Message}");
+                    Console.WriteLine($"{_pageName}: USER merge failed 10 times: {mergeException.Number}, {mergeException.Source}\n{mergeException.Message}");
                     throw mergeException;
                 }
             }
@@ -349,27 +348,27 @@ namespace WikiReader
                     {
                         if (sex.Number == 1205)
                         {
-                            System.Console.WriteLine($"{_pageName}: Deadlock encountered during TEXT merge of {prtdr.Count} rows. Retry {retries}");
+                            Console.WriteLine($"{_pageName}: Deadlock encountered during TEXT merge of {prtdr.Count} rows. Retry {retries}");
                             mergeException = sex;
                             Thread.Sleep(2500);
                             continue;
                         }
                         else if (sex.Number == -2)
                         {
-                            System.Console.WriteLine($"{_pageName}: Timeout encountered during TEXT merge of {prtdr.Count} rows. Retry {retries}");
+                            Console.WriteLine($"{_pageName}: Timeout encountered during TEXT merge of {prtdr.Count} rows. Retry {retries}");
                             mergeException = sex;
                             Thread.Sleep(2500);
                             continue;
                         }
                         else
                         {
-                            System.Console.WriteLine($"{_pageName}: Exception during TEXT merge of {prtdr.Count} rows. {sex.Number}: {sex.Source}\n{sex.Message}");
+                            Console.WriteLine($"{_pageName}: Exception during TEXT merge of {prtdr.Count} rows. {sex.Number}: {sex.Source}\n{sex.Message}");
                             throw sex;
                         }
                     }
                     catch (InvalidOperationException ioe)
                     {
-                        System.Console.WriteLine($"{_pageName}: Exception during TEXT merge of {prtdr.Count} rows. {ioe.Message}\n{ioe.StackTrace}");
+                        Console.WriteLine($"{_pageName}: Exception during TEXT merge of {prtdr.Count} rows. {ioe.Message}\n{ioe.StackTrace}");
                         throw ioe;
                     }
                     finally
@@ -380,7 +379,7 @@ namespace WikiReader
                 }
                 if (mergeException != null)
                 {
-                    System.Console.WriteLine($"{_pageName}: TEXT merge failed 10 times: {mergeException.Number}, {mergeException.Source}\n{mergeException.Message}");
+                    Console.WriteLine($"{_pageName}: TEXT merge failed 10 times: {mergeException.Number}, {mergeException.Source}\n{mergeException.Message}");
                     throw mergeException;
                 }
             }
@@ -604,27 +603,27 @@ namespace WikiReader
                     {
                         if (sex.Number == 1205)
                         {
-                            System.Console.WriteLine($"{_pageName}: Deadlock encountered during PageRevision merge of {prdr.Count} rows. Retry {retries}");
+                            Console.WriteLine($"{_pageName}: Deadlock encountered during PageRevision merge of {prdr.Count} rows. Retry {retries}");
                             mergeException = sex;
                             Thread.Sleep(2500);
                             continue;
                         }
                         else if (sex.Number == -2)
                         {
-                            System.Console.WriteLine($"{_pageName}: Timeout encountered during PageRevision merge of {prdr.Count} rows. Retry {retries}");
+                            Console.WriteLine($"{_pageName}: Timeout encountered during PageRevision merge of {prdr.Count} rows. Retry {retries}");
                             mergeException = sex;
                             Thread.Sleep(2500);
                             continue;
                         }
                         else
                         {
-                            System.Console.WriteLine($"{_pageName}: Exception during PageRegision merge of {prdr.Count} rows. {sex.Number}: {sex.Source}\n{sex.Message}");
+                            Console.WriteLine($"{_pageName}: Exception during PageRegision merge of {prdr.Count} rows. {sex.Number}: {sex.Source}\n{sex.Message}");
                             throw sex;
                         }
                     }
                     catch (InvalidOperationException ioe)
                     {
-                        System.Console.WriteLine($"{_pageName}: Exception during PageRevision merge of {prdr.Count} rows. {ioe.Message}\n{ioe.StackTrace}");
+                        Console.WriteLine($"{_pageName}: Exception during PageRevision merge of {prdr.Count} rows. {ioe.Message}\n{ioe.StackTrace}");
                         throw ioe;
                     }
                     finally
@@ -632,9 +631,10 @@ namespace WikiReader
                         pump.CompleteActivity(mergeActivity, _revsAdded, mergeException?.Message);
                     }
                 }
+
                 if (mergeException != null)
                 {
-                    System.Console.WriteLine($"{_pageName}: PageRevision merge failed 10 times: {mergeException.Number}, {mergeException.Source}\n{mergeException.Message}");
+                    Console.WriteLine($"{_pageName}: PageRevision merge failed 10 times: {mergeException.Number}, {mergeException.Source}\n{mergeException.Message}");
                     throw mergeException;
                 }
             }
@@ -653,7 +653,7 @@ namespace WikiReader
                 tableDrop.ExecuteNonQuery();
 
                 // signal the next in the chain of waiters
-                completeEvent.Set();
+                this.completeEvent.Set();
             }
         }
 
@@ -686,7 +686,7 @@ namespace WikiReader
             {
                 exResult = sex;
                 if (sex.Number == 8152)
-                    System.Console.WriteLine($"Error: page name is too long at {_pageName.Length} characters");
+                    Console.WriteLine($"Error: page name is too long at {_pageName.Length} characters");
                 else if (sex.Number == 2601 || sex.Number == 2627)
                 {
                     // duplicate! we'll do an update instead

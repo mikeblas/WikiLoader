@@ -1,10 +1,10 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Data.SqlClient;
-using System.Threading;
-
-namespace WikiReader
+﻿namespace WikiReader
 {
+    using System;
+    using System.Collections.Generic;
+    using System.Data.SqlClient;
+    using System.Threading;
+
     /// <summary>
     /// NamespaceInfos contains a collection of Namespace objects,
     /// and implements the Insertable interface so the listcan be pushed
@@ -18,8 +18,8 @@ namespace WikiReader
     {
         /// <summary>
         /// map of namespace IDs (as integers) to NamespaceInfo objects
-        /// </summary>
-        readonly private Dictionary<Int64, NamespaceInfo> _namespaceMap;
+        /// /// </summary>
+        readonly private Dictionary<int, NamespaceInfo> namespaceMap;
 
         readonly private ManualResetEvent completeEvent = new(false);
 
@@ -28,21 +28,21 @@ namespace WikiReader
         /// </summary>
         public NamespaceInfos()
         {
-            _namespaceMap = new Dictionary<Int64, NamespaceInfo>();
+            this.namespaceMap = new Dictionary<int, NamespaceInfo>();
         }
 
         public ManualResetEvent GetCompletedEvent()
         {
-            return completeEvent;
+            return this.completeEvent;
         }
 
         /// <summary>
         /// Add a new NamespaceInfo
         /// </summary>
         /// <param name="nsi"></param>
-        public void Add( NamespaceInfo nsi )
+        public void Add(NamespaceInfo nsi)
         {
-            _namespaceMap.Add(nsi.ID, nsi);
+            this.namespaceMap.Add(nsi.ID, nsi);
         }
 
         /// <summary>
@@ -50,7 +50,7 @@ namespace WikiReader
         /// </summary>
         public int Count
         {
-            get { return _namespaceMap.Count; }
+            get { return this.namespaceMap.Count; }
         }
 
         /// <summary>
@@ -59,17 +59,17 @@ namespace WikiReader
         /// </summary>
         /// <param name="key">NamespaceID to find</param>
         /// <returns>NamespaceID, null if not found</returns>
-        public NamespaceInfo this[Int64 key]
+        public NamespaceInfo this[int key]
         {
-            get { return _namespaceMap[key]; }
+            get { return this.namespaceMap[key]; }
         }
 
         /// <summary>
         /// Get a collection containing our values (only)
         /// </summary>
-        public Dictionary<Int64, NamespaceInfo>.ValueCollection Values
+        public Dictionary<int, NamespaceInfo>.ValueCollection Values
         {
-            get { return _namespaceMap.Values; }
+            get { return this.namespaceMap.Values; }
         }
 
         /// <summary>
@@ -84,13 +84,13 @@ namespace WikiReader
             // count of rows we didn't insert becuase they were dupes
             int already = 0;
 
-            long activityID = pump.StartActivity("Insert Namespaces", null, null, _namespaceMap.Count);
+            long activityID = pump.StartActivity("Insert Namespaces", null, null, this.namespaceMap.Count);
 
             // command to push a new row into the Namespace table
             using var cmd = new SqlCommand("INSERT INTO [Namespace] (NamespaceID, NamespaceName) VALUES ( @ID, @Name );", conn);
 
             // go through the whole collection
-            foreach (KeyValuePair<Int64, NamespaceInfo> kvp in _namespaceMap)
+            foreach (KeyValuePair<int, NamespaceInfo> kvp in this.namespaceMap)
             {
                 // reset the parameters collection; bind the current item from the collection
                 cmd.Parameters.Clear();
@@ -120,14 +120,14 @@ namespace WikiReader
             }
 
             // show our results
-            System.Console.WriteLine($"Inserted {inserts} new namespaces; {already} already known");
+            Console.WriteLine($"Inserted {inserts} new namespaces; {already} already known");
             pump.CompleteActivity(activityID, inserts, null);
 
             // signal the next in the chain of waiters
-            completeEvent.Set();
+            this.completeEvent.Set();
         }
 
-        String IInsertable.ObjectName
+        string IInsertable.ObjectName
         {
             get { return "Namespaces Inserter"; }
         }

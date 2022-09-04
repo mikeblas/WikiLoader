@@ -15,7 +15,7 @@ namespace WikiReader
     class NamespaceInfo
     {
         int _pageCount;
-        readonly Int64 _namespaceId;
+        readonly int _namespaceId;
         readonly string _name;
 
         /// <summary>
@@ -25,14 +25,14 @@ namespace WikiReader
         /// </summary>
         /// <param name="name">Name of this namespace</param>
         /// <param name="namespaceId">ID for this namespace</param>
-        public NamespaceInfo(string name, Int64 namespaceId)
+        public NamespaceInfo(string name, int namespaceId)
         {
             _name = name;
             _pageCount = 1;
             _namespaceId = namespaceId;
         }
 
-        public Int64 ID
+        public int ID
         {
             get { return _namespaceId; }
         }

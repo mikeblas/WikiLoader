@@ -7,6 +7,6 @@
 
         void InsertedPages(int count);
         void InsertedUsers(int count);
-        void InsertedRevisions(int Count);
+        void InsertedRevisions(int count);
     }
 }

@@ -196,7 +196,7 @@ namespace WikiReader
             if (_columnMap.TryGetValue(name, out int index))
                 return index;
 
-            System.Console.WriteLine($"Couldn't find {name}");
+            Console.WriteLine($"Couldn't find {name}");
             throw new NotImplementedException();
         }
 
@@ -229,7 +229,7 @@ namespace WikiReader
                     return record.TextLength;
 
                 case "textavailable":
-                    return (record.Text != null);
+                    return record.Text != null;
 
                 case "comment":
                     if (record.Comment == null)
@@ -285,9 +285,8 @@ namespace WikiReader
                             return DBNull.Value;
                     }
 
-
                 default:
-                    System.Console.WriteLine("Need more cases! {i}, {columnName}");
+                    Console.WriteLine("Need more cases! {i}, {columnName}");
                     break;
             }
 

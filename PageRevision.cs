@@ -1,7 +1,7 @@
-﻿using System;
-
-namespace WikiReader
+﻿namespace WikiReader
 {
+    using System;
+
     /// <summary>
     /// Represents a revision to a Page.
     /// 
@@ -10,8 +10,8 @@ namespace WikiReader
     /// </summary>
     class PageRevision
     {
-        readonly Int64 _parentRevisionId = 0;
-        readonly Int64 _revisionId = 0;
+        readonly long _parentRevisionId = 0;
+        readonly long _revisionId = 0;
         readonly DateTime _timestamp = DateTime.MinValue;
         readonly User? _contributor = null;
         readonly string? _comment = null;
@@ -22,7 +22,7 @@ namespace WikiReader
         int _textLength = 0;
         string? _text = null;
 
-        public PageRevision(Int64 parentRevisionId, Int64 revisionId, DateTime timestamp, User? contributor, string? comment, string? text, bool minor)
+        public PageRevision(long parentRevisionId, long revisionId, DateTime timestamp, User? contributor, string? comment, string? text, bool minor)
         {
             _parentRevisionId = parentRevisionId;
             _revisionId = revisionId;

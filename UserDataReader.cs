@@ -1,9 +1,9 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Data;
-
-namespace WikiReader
+﻿namespace WikiReader
 {
+    using System;
+    using System.Collections.Generic;
+    using System.Data;
+
     internal class UserDataReader : IDataReader
     {
         // list of users this reader will supply
@@ -14,18 +14,18 @@ namespace WikiReader
         /// </summary>
         int _currentUser = -1;
 
-        public UserDataReader(HashSet<Int64> insertedUserSet, IList<PageRevision> pages)
+        public UserDataReader(HashSet<long> insertedUserSet, IList<PageRevision> pages)
         {
-            Int64 lastUserID = -1;
+            long lastUserID = -1;
             foreach (PageRevision pr in pages)
             {
                 lock (insertedUserSet)
                 {
                     if (lastUserID != -1)
-                    {
                         insertedUserSet.Add(lastUserID);
-                    }
+
                     lastUserID = -1;
+
                     // if the contributor was deleted, skip it
                     if (null == pr.Contributor)
                         continue;
@@ -197,12 +197,12 @@ namespace WikiReader
 
         int IDataRecord.GetOrdinal(string name)
         {
-            switch (name)
+            return name switch
             {
-                case "UserID": return 0;
-                case "UserName": return 1;
-            }
-            throw new NotImplementedException();
+                "UserID" => 0,
+                "UserName" => 1,
+                _ => throw new NotImplementedException(),
+            };
         }
 
         string IDataRecord.GetString(int i)

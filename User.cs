@@ -13,14 +13,14 @@ namespace WikiReader
     {
         readonly string? _userName = null;
         readonly string? _ipAddress = null;
-        readonly Int64 _userId = 0;
+        readonly long _userId = 0;
 
         /// <summary>
         /// Create a User object
         /// </summary>
         /// <param name="userId">user ID integer</param>
         /// <param name="userName">user name as a string</param>
-        public User(Int64 userId, string userName)
+        public User(long userId, string userName)
         {
             _userId = userId;
             _userName = userName;
@@ -40,7 +40,7 @@ namespace WikiReader
             get { return (_userId == 0) && (_userName == null); }
         }
 
-        public Int64 ID
+        public long ID
         {
             get { return _userId; }
         }
