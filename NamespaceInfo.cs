@@ -12,7 +12,7 @@
     /// Includes the name and ID of the namespace. Also manages a count
     /// which is used to tally the number of articles read per namespace.
     /// </summary>
-    class NamespaceInfo
+    internal class NamespaceInfo
     {
         private int pageCount;
         private readonly int namespaceID;
@@ -21,10 +21,10 @@
         /// <summary>
         /// Create a new namespace instance.
         /// pageCount is initalized to one.
-        /// 
+        ///
         /// </summary>
-        /// <param name="name">Name of this namespace</param>
-        /// <param name="namespaceId">ID for this namespace</param>
+        /// <param name="name">Name of this namespace.</param>
+        /// <param name="namespaceId">ID for this namespace.</param>
         public NamespaceInfo(string name, int namespaceId)
         {
             this.name = name;

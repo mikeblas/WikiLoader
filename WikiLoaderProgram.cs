@@ -7,9 +7,9 @@ namespace WikiReader
     using System.Reflection.PortableExecutable;
     using System.Xml;
 
-    class WikiLoaderProgram
+    internal class WikiLoaderProgram
     {
-        internal static bool sigintReceived = false;
+        internal static bool SigintReceived = false;
 
         private readonly DatabasePump pump;
 
@@ -21,7 +21,7 @@ namespace WikiReader
             Console.CancelKeyPress += (sender, e) =>
             {
                 e.Cancel = true;
-                WikiLoaderProgram.sigintReceived = true;
+                WikiLoaderProgram.SigintReceived = true;
                 Console.WriteLine("CTRL+C received! Shutting down ...");
             };
         }
@@ -66,7 +66,7 @@ namespace WikiReader
             FileStream s = File.OpenRead(fileName);
             using XmlReader reader = XmlReader.Create(s, null);
 
-            XmlDumpParser xdp = new(s, reader, this.pump);
+            XmlDumpParser xdp = new(s, reader, this.pump, 0);
 
             while (xdp.Read())
             {
@@ -85,7 +85,7 @@ namespace WikiReader
             Console.WriteLine($"Longest comment is {xdp.Comment.LargestLength}: {xdp.Comment.Largest}");
             Console.WriteLine($"Longest text is {xdp.ArticleText.LargestLength}");
 
-            foreach (NamespaceInfo ns in xdp.namespaceMap.Values)
+            foreach (NamespaceInfo ns in xdp.NamespaceMap.Values)
                 Console.WriteLine($"{ns.PageCount},{ns.Name}");
         }
     }

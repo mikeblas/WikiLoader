@@ -10,6 +10,16 @@ namespace WikiReader
 
     internal class XmlDumpParser
     {
+        // dictionary from string of user name to user ID
+        private readonly Dictionary<string, int> contributorMap = new();
+
+        // dictionary from page names to Page objects
+        // note that page objects internally contain a list of revisions
+        private readonly Dictionary<string, Page> pageMap = new();
+
+        // dictionary from namespace ID to namespace string
+        private readonly NamespaceInfos namespaceMap = new();
+
         private string? pageName = null;
         private string? redirectTitle = null;
         private long revisionId = 0;
@@ -33,32 +43,32 @@ namespace WikiReader
         private bool sawMinor = false;
         private bool sawPageBegin = true;
 
-        // dictionary from string of user name to user ID
-        private Dictionary<string, int> contributorMap = new();
-
-        // dictionary from page names to Page objects
-        // note that page objects internally contain a list of revisions
-        private Dictionary<string, Page> pageMap = new();
-
-        // dictionary from namespace ID to namespace string
-        internal NamespaceInfos namespaceMap = new();
-
         private long currentActivity = -1;
         private Page? previousPage = null;
 
         private bool quitNow = false;
 
-        private long skipUntilPosition = 14182422125;
+        /// <summary>
+        /// File position marking the first spot wher we should start paying attention.
+        /// If zero, read the whole file.
+        /// </summary>
+        private long skipUntilPosition;
 
         private FileStream s;
         private XmlReader reader;
         private DatabasePump pump;
 
-        internal XmlDumpParser(FileStream s, XmlReader reader, DatabasePump pump)
+        internal XmlDumpParser(FileStream s, XmlReader reader, DatabasePump pump, long skipUntilPosition)
         {
             this.s = s;
             this.reader = reader;
             this.pump = pump;
+            this.skipUntilPosition = skipUntilPosition;
+        }
+
+        internal NamespaceInfos NamespaceMap
+        {
+            get { return this.namespaceMap; }
         }
 
         internal int TotalMinorRevisions
@@ -146,52 +156,53 @@ namespace WikiReader
                     {
                         this.pageId = int.Parse(this.reader.Value);
                     }
+
                     break;
 
                 case "username":
-                    reader.Read();
-                    contributorUserName = reader.Value;
+                    this.reader.Read();
+                    this.contributorUserName = this.reader.Value;
                     break;
 
                 case "ip":
-                    reader.Read();
-                    contributorIp.Current = reader.Value;
-                    anonymousRevisions += 1;
+                    this.reader.Read();
+                    this.contributorIp.Current = this.reader.Value;
+                    this.anonymousRevisions += 1;
                     break;
 
                 case "timestamp":
-                    reader.Read();
-                    timestamp = DateTime.Parse(reader.Value);
+                    this.reader.Read();
+                    this.timestamp = DateTime.Parse(this.reader.Value);
                     break;
 
                 case "redirect":
-                    redirectTitle = reader.GetAttribute("title");
+                    this.redirectTitle = this.reader.GetAttribute("title");
                     break;
 
                 case "ns":
-                    reader.Read();
-                    namespaceId = int.Parse(reader.Value);
+                    this.reader.Read();
+                    this.namespaceId = int.Parse(this.reader.Value);
                     break;
 
                 case "revision":
-                    inRevision = true;
+                    this.inRevision = true;
 
                     // by this point, everything we need to know about a page should be set
                     // start an action for this page, then, if we don't have one already flying
-                    if (currentActivity == -1)
-                        currentActivity = pump.StartActivity("Read Page", namespaceId, pageId, null);
+                    if (this.currentActivity == -1)
+                        this.currentActivity = pump.StartActivity("Read Page", this.namespaceId, this.pageId, null);
                     break;
 
                 case "contributor":
                     // "contributor" may be an empty element;
                     // if so, we're not inside it (and won't have contributor name or ID)
-                    if (!reader.IsEmptyElement)
+                    if (!this.reader.IsEmptyElement)
                     {
-                        inContributor = true;
+                        this.inContributor = true;
                     }
                     else
                     {
-                        contributorUserName = null;
+                        this.contributorUserName = null;
                         // String str = reader.GetAttribute("deleted");
                         // Console.WriteLine($"Empty element! RevisionID = {revisionId}, Attribute = {str}");
                     }
@@ -201,28 +212,28 @@ namespace WikiReader
                 case "text":
                     // "text" may be an empty element;
                     // if so, we're not inside it (and won't have contributor name or ID)
-                    if (!reader.IsEmptyElement)
+                    if (!this.reader.IsEmptyElement)
                     {
-                        reader.Read();
+                        this.reader.Read();
                         try
                         {
-                            articleText.Current = reader.Value;
+                            this.articleText.Current = this.reader.Value;
                         }
                         catch (OutOfMemoryException oom)
                         {
-                            if (articleText.Current != null)
-                                Console.WriteLine($"articleText == {articleText.Current.Length}");
+                            if (this.articleText.Current != null)
+                                Console.WriteLine($"articleText == {this.articleText.Current.Length}");
                             else
                                 Console.WriteLine("articleText == is null");
-                            Console.WriteLine($"revisionID == {revisionId}");
-                            Console.WriteLine($"reader == {reader.Value.Length}");
-                            Console.WriteLine($"timestamp == {timestamp}");
+                            Console.WriteLine($"revisionID == {this.revisionId}");
+                            Console.WriteLine($"reader == {this.reader.Value.Length}");
+                            Console.WriteLine($"timestamp == {this.timestamp}");
                             throw oom;
                         }
                     }
                     else
                     {
-                        articleText.Current = null;
+                        this.articleText.Current = null;
                     }
 
                     break;
@@ -300,13 +311,13 @@ namespace WikiReader
                     }
 
                     // reset revision counts in reader
-                    revisionCount = 0;
-                    minorRevisionCount = 0;
-                    pageName = null;
-                    redirectTitle = null;
+                    this.revisionCount = 0;
+                    this.minorRevisionCount = 0;
+                    this.pageName = null;
+                    this.redirectTitle = null;
 
-                    if (WikiLoaderProgram.sigintReceived)
-                        quitNow = true;
+                    if (WikiLoaderProgram.SigintReceived)
+                        this.quitNow = true;
                     break;
             }
 
@@ -319,23 +330,23 @@ namespace WikiReader
             switch (this.reader.Name)
             {
                 case "revision":
-                    if (pageName == null)
+                    if (this.pageName == null)
                         throw new InvalidOperationException("Expected valid page name when processing revision");
 
                     // Console.WriteLine(" {0}: {1}, {2}, {3}", pageName, revisionId, timestamp, articleText.Length );
                     // Console.WriteLine(" {0}: ", contributorUserName, comment);
-                    revisionCount += 1;
+                    this.revisionCount += 1;
 
-                    if (revisionCount % 1000 == 0)
-                        Console.WriteLine($" {pageName}: read {revisionCount} revisions");
+                    if (this.revisionCount % 1000 == 0)
+                        Console.WriteLine($" {this.pageName}: read {this.revisionCount} revisions");
 
-                    if (sawMinor)
-                        minorRevisionCount += 1;
+                    if (this.sawMinor)
+                        this.minorRevisionCount += 1;
 
                     User? contributor = null;
-                    if (contributorId == 0 && contributorUserName == null)
+                    if (this.contributorId == 0 && this.contributorUserName == null)
                     {
-                        if (contributorIp.Current == null)
+                        if (this.contributorIp.Current == null)
                         {
                             // deletd contribution; contributor remains null
                             // for the PageRevision constructor
@@ -343,49 +354,49 @@ namespace WikiReader
                         else
                         {
                             // anonymous edit
-                            contributor = new User(contributorIp.Current);
+                            contributor = new User(this.contributorIp.Current);
                         }
                     }
                     else
                     {
-                        if (contributorUserName != null)
-                            contributor = new User(contributorId, contributorUserName);
+                        if (this.contributorUserName != null)
+                            contributor = new User(this.contributorId, this.contributorUserName);
                     }
 
-                    var rev = new PageRevision(parentRevisionId, revisionId, timestamp, contributor, comment.Current, articleText.Current, sawMinor);
-                    if (pageMap.ContainsKey(pageName))
+                    var rev = new PageRevision(this.parentRevisionId, this.revisionId, this.timestamp, contributor, this.comment.Current, this.articleText.Current, this.sawMinor);
+                    if (this.pageMap.ContainsKey(this.pageName))
                     {
-                        pageMap[pageName].AddRevision(rev);
+                        this.pageMap[this.pageName].AddRevision(rev);
                     }
                     else
                     {
-                        Page newPage = new(namespaceId, pageId, pageName, redirectTitle, this.pump.RunID, s.Position);
+                        Page newPage = new(this.namespaceId, this.pageId, this.pageName, this.redirectTitle, this.pump.RunID, this.s.Position);
                         newPage.AddRevision(rev);
-                        pageMap.Add(pageName, newPage);
+                        this.pageMap.Add(this.pageName, newPage);
                     }
 
-                    inRevision = false;
-                    sawMinor = false;
-                    contributorUserName = null;
-                    contributorIp.Reset();
-                    contributorId = 0;
-                    comment.Current = null;
-                    articleText.Current = null;
-                    redirectTitle = null;
+                    this.inRevision = false;
+                    this.sawMinor = false;
+                    this.contributorUserName = null;
+                    this.contributorIp.Reset();
+                    this.contributorId = 0;
+                    this.comment.Current = null;
+                    this.articleText.Current = null;
+                    this.redirectTitle = null;
                     break;
 
                 case "contributor":
                     // Console.WriteLine($"inContributor == {inContributor}");
-                    inContributor = false;
-                    if (contributorIp.Current == null)
+                    this.inContributor = false;
+                    if (this.contributorIp.Current == null)
                     {
-                        if (contributorUserName == null)
+                        if (this.contributorUserName == null)
                             throw new InvalidOperationException("Can't have null contributor IP and null contributor User Name");
                         //REVIEW: how to handle anonymous edits?
-                        if (contributorMap.ContainsKey(contributorUserName))
-                            contributorMap[contributorUserName] += 1;
+                        if (this.contributorMap.ContainsKey(this.contributorUserName))
+                            this.contributorMap[this.contributorUserName] += 1;
                         else
-                            contributorMap.Add(contributorUserName, 1);
+                            this.contributorMap.Add(this.contributorUserName, 1);
                     }
 
                     break;

@@ -78,7 +78,7 @@
         /// <summary>
         /// add a revision to the history of this page in memory.
         /// </summary>
-        /// <param name="pr"></param>
+        /// <param name="pr">PageRevision to be added.</param>
         public void AddRevision(PageRevision pr)
         {
             if (this.revisions.ContainsKey(pr.RevisionId))
@@ -101,7 +101,7 @@
         }
 
         /// <summary>
-        /// Insert this page, all its revisions, text, and related users
+        /// Insert this page, all its revisions, text, and related users.
         /// </summary>
         /// <param name="previous"></param>
         /// <param name="pump"></param>
@@ -153,9 +153,9 @@
             if (rows == 0)
             {
                 using var updateCommand = new SqlCommand(
-                    "UPDATE RunProgress " + 
+                    "UPDATE RunProgress " +
                     "   SET FilePosition = @FilePosition, " +
-                    "       ReportTime = GETUTCDATE(), " + 
+                    "       ReportTime = GETUTCDATE(), " +
                     "       PageID = @PageID" +
                     " WHERE FilePosition < @FilePosition " +
                     "   AND RunID = @RunID", conn);
@@ -256,6 +256,7 @@
                     }
 
                 }
+
                 if (mergeException != null)
                 {
                     Console.WriteLine($"[[{this.pageName}]]: USER merge failed 10 times: {mergeException.Number}, {mergeException.Source}\n{mergeException.Message}");
@@ -378,6 +379,7 @@
                     }
 
                 }
+
                 if (mergeException != null)
                 {
                     Console.WriteLine($"[[{this.pageName}]]: TEXT merge failed 10 times: {mergeException.Number}, {mergeException.Source}\n{mergeException.Message}");
@@ -589,7 +591,7 @@
                             "        RevisionWhen, ContributorID, IPAddress, Comment, " +
                             "        TextAvailable, IsMinor, ArticleTextLength, TextDeleted, UserDeleted) " +
                             " VALUES (SRC.NamespaceID, SRC.PageID, SRC.PageRevisionID, SRC.ParentPageRevisionID, " +
-                            "        SRC.RevisionWhen, SRC.ContributorID, SRC.IPAddress, SRC.Comment, " + 
+                            "        SRC.RevisionWhen, SRC.ContributorID, SRC.IPAddress, SRC.Comment, " +
                             "	     SRC.TextAvailable, SRC.IsMinor, SRC.ArticleTextLength, SRC.TextDeleted, SRC.UserDeleted);",
                             conn);
                         tableMerge.CommandTimeout = 3600;

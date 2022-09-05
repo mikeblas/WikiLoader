@@ -1,9 +1,9 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Data;
-
-namespace WikiReader
+﻿namespace WikiReader
 {
+    using System;
+    using System.Collections.Generic;
+    using System.Data;
+
     class PageRevisionDataReader : IDataReader
     {
         // list of PageRevisions this reader will supply
@@ -188,6 +188,7 @@ namespace WikiReader
             {
                 return name;
             }
+
             throw new NotImplementedException();
         }
 

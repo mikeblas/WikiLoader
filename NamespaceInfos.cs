@@ -9,7 +9,7 @@
     /// NamespaceInfos contains a collection of Namespace objects,
     /// and implements the Insertable interface so the listcan be pushed
     /// to the database.
-    /// 
+    ///
     /// Note that the class has a few members (counts, particularly) that
     /// aren't persisted; these are used to show statistics for a run of
     /// the loader.

@@ -7,12 +7,12 @@
     internal class UserDataReader : IDataReader
     {
         // list of users this reader will supply
-        private readonly List<User> _contributors = new();
+        private readonly List<User> contributors = new();
 
         /// <summary>
         /// What user would be next read?
         /// </summary>
-        private int _currentUser = -1;
+        private int currentUser = -1;
 
         public UserDataReader(HashSet<long> insertedUserSet, IList<PageRevision> pages)
         {
@@ -27,22 +27,22 @@
                     lastUserID = -1;
 
                     // if the contributor was deleted, skip it
-                    if (null == pr.Contributor)
+                    if (pr.Contributor == null)
                         continue;
 
                     // if we're not anonymous and we've already seen this ID, then skip
-                    if (false == pr.Contributor.IsAnonymous && insertedUserSet.Contains(pr.Contributor.ID))
+                    if (!pr.Contributor.IsAnonymous && insertedUserSet.Contains(pr.Contributor.ID))
                         continue;
                 }
 
                 // if we're anonymous, then skip
-                if (true == pr.Contributor.IsAnonymous)
+                if (pr.Contributor.IsAnonymous)
                     continue;
 
                 // if we're not anonymous, add this user to our list
-                if (false == pr.Contributor.IsAnonymous)
+                if (!pr.Contributor.IsAnonymous)
                 {
-                    _contributors.Add(pr.Contributor);
+                    this.contributors.Add(pr.Contributor);
                     lastUserID = pr.Contributor.ID;
                 }
             }
@@ -58,7 +58,7 @@
 
         public int Count
         {
-            get { return _contributors.Count; }
+            get { return this.contributors.Count; }
         }
 
         void IDataReader.Close()
@@ -87,9 +87,9 @@
 
         bool IDataReader.Read()
         {
-            if (_currentUser + 1 >= _contributors.Count)
+            if (this.currentUser + 1 >= this.contributors.Count)
                 return false;
-            _currentUser += 1;
+            this.currentUser += 1;
             return true;
         }
 
@@ -186,7 +186,7 @@
         long IDataRecord.GetInt64(int i)
         {
             if (i == 0)
-                return _contributors[_currentUser].ID;
+                return this.contributors[this.currentUser].ID;
             throw new NotImplementedException();
         }
 
@@ -207,7 +207,7 @@
 
         string IDataRecord.GetString(int i)
         {
-            string? s = _contributors[_currentUser].Name;
+            string? s = this.contributors[this.currentUser].Name;
             if (s == null)
                 throw new InvalidOperationException("null GetString");
             return s;
@@ -217,13 +217,14 @@
         {
             if (i == 1)
             {
-                string? s = _contributors[_currentUser].Name;
+                string? s = this.contributors[this.currentUser].Name;
                 if (s == null)
                     throw new InvalidOperationException("Null name");
                 return s;
             }
+
             if (i == 0)
-                return _contributors[_currentUser].ID;
+                return contributors[this.currentUser].ID;
             throw new NotImplementedException();
         }
 

@@ -58,6 +58,7 @@
                     _conn.Close();
                     _conn.Dispose();
                 }
+
                 _conn = null;
             }
 
@@ -158,7 +159,7 @@
             insertRun.Parameters.AddWithValue("@SourceFileName", fileName);
             insertRun.Parameters.AddWithValue("@SourceFileTimestamp", File.GetLastWriteTimeUtc(fileName));
             insertRun.Parameters.AddWithValue("@SourceFileSize", new System.IO.FileInfo(fileName).Length);
-            decimal d = (decimal) insertRun.ExecuteScalar();
+            decimal d = (decimal)insertRun.ExecuteScalar();
 
             this.runID = (long)d;
         }
@@ -170,7 +171,7 @@
             using var updateRun = new SqlCommand(
                 "UPDATE Run " +
                 "   SET EndTime = GetUTCDate(), " +
-                "       Result = @Result" + 
+                "       Result = @Result" +
                 "  WHERE RunID = @RunID;", conn);
 
             updateRun.Parameters.AddWithValue("@RunID", this.runID);
@@ -183,6 +184,7 @@
                 string str = strResult[..Math.Min(strResult.Length, 1024)];
                 updateRun.Parameters.AddWithValue("@Result", str);
             }
+
             updateRun.ExecuteNonQuery();
         }
 
@@ -255,17 +257,18 @@
                 // report every 10 pauses == 1 second
                 if (pauses++ % 10 == 0)
                 {
-                    string main = $"Backpressure: {Interlocked.Read(ref _running)} running, {Interlocked.Read(ref _queued)} queued, {_pendingRevisions} pending revisions";
+                    string main = $"Backpressure: {Interlocked.Read(ref _running)} running, {Interlocked.Read(ref _queued)} queued, {this._pendingRevisions} pending revisions";
                     if (previousPendingRevisions != -1)
                     {
-                        long delta = _pendingRevisions - previousPendingRevisions;
+                        long delta = this._pendingRevisions - previousPendingRevisions;
                         Console.WriteLine($"{main} ({delta:+#;-#;0})");
                     }
                     else
                         Console.WriteLine(main);
 
-                    previousPendingRevisions = _pendingRevisions;
+                    previousPendingRevisions = this._pendingRevisions;
                 }
+
                 Thread.Sleep(100);  // 100 milliseconds
             }
 
@@ -273,12 +276,12 @@
             // disposable connection object is now owned by WorkItemInfo object
             WorkItemInfo ci = new(this, i, previous, this);
 
-            // queue it up! 
+            // queue it up!
             Interlocked.Increment(ref _queued);
             ThreadPool.QueueUserWorkItem(new WaitCallback(WorkCallback), ci);
 
             // return our current running count. This might
-            // not have incremented just yet, but this is a convenient 
+            // not have incremented just yet, but this is a convenient
             // time to help show status
             return (_running, _queued, _pendingRevisions);
         }
@@ -327,6 +330,7 @@
                 Console.WriteLine($"{_running} still running, {_queued} queued, {_pendingRevisions} pending revisions");
                 Thread.Sleep(1000);
             }
+
             return;
         }
 
@@ -350,7 +354,7 @@
 
         public void CompleteRevisions(int count)
         {
-            Interlocked.Add( ref _pendingRevisions, -count);
+            Interlocked.Add(ref _pendingRevisions, -count);
         }
 
 

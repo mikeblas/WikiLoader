@@ -4,23 +4,23 @@
 
     /// <summary>
     /// Represents a revision to a Page.
-    /// 
+    ///
     /// https://www.mediawiki.org/wiki/Manual:Revision_table
-    /// 
+    ///
     /// </summary>
     class PageRevision
     {
-        readonly long _parentRevisionId = 0;
-        readonly long _revisionId = 0;
-        readonly DateTime _timestamp = DateTime.MinValue;
-        readonly User? _contributor = null;
-        readonly string? _comment = null;
-        readonly bool _minor = false;
-        readonly bool _commentDeleted = false;
-        readonly bool _textDeleted = false;
+        private readonly long _parentRevisionId = 0;
+        private readonly long _revisionId = 0;
+        private readonly DateTime _timestamp = DateTime.MinValue;
+        private readonly User? _contributor = null;
+        private readonly string? _comment = null;
+        private readonly bool _minor = false;
+        private readonly bool _commentDeleted = false;
+        private readonly bool _textDeleted = false;
 
-        int _textLength = 0;
-        string? _text = null;
+        private int _textLength = 0;
+        private string? _text = null;
 
         public PageRevision(long parentRevisionId, long revisionId, DateTime timestamp, User? contributor, string? comment, string? text, bool minor)
         {
@@ -30,7 +30,7 @@
             _contributor = contributor;
             _comment = comment;
             _text = text;
-            if (null == _text)
+            if (_text == null)
             {
                 _textLength = 0;
                 _textDeleted = true;
@@ -40,15 +40,16 @@
                 _textLength = _text.Length;
                 _textDeleted = false;
             }
+
             _minor = minor;
         }
 
-        public Int64 RevisionId
+        public long RevisionId
         {
             get { return _revisionId; }
         }
 
-        public Int64 ParentRevisionId
+        public long ParentRevisionId
         {
             get { return _parentRevisionId; }
         }
@@ -81,7 +82,11 @@
 
         public string? Text
         {
-            get { return _text; }
+            get
+            {
+                return _text;
+            }
+
             set
             {
                 _text = value;
@@ -101,7 +106,5 @@
         {
             get { return _minor; }
         }
- 
     }
-
 }

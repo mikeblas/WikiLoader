@@ -1,11 +1,10 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Data;
-
-
-namespace WikiReader
+﻿namespace WikiReader
 {
-    class PageRevisionTextDataReader  : IDataReader
+    using System;
+    using System.Collections.Generic;
+    using System.Data;
+
+    class PageRevisionTextDataReader : IDataReader
     {
         // list of PageRevisions this reader will supply
         readonly List<PageRevision> _revisions = new();
@@ -196,6 +195,7 @@ namespace WikiReader
                     throw new InvalidOperationException("null GetString");
                 return s;
             }
+
             throw new NotImplementedException();
         }
 
@@ -208,6 +208,7 @@ namespace WikiReader
                     throw new InvalidOperationException("null Getvalue");
                 return s;
             }
+
             if (i == 2)
                 return _revisions[_currentRevision].RevisionId;
             if (i == 1)

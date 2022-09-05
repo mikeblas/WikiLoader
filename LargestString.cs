@@ -59,7 +59,10 @@
 
         public int LargestLength
         {
-            get { if (this.largest == null) return 0; return this.largest.Length; }
+            get
+            {
+                return this.largest == null ? 0 : this.largest.Length;
+            }
         }
     }
 }
