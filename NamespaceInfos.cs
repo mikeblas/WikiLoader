@@ -18,10 +18,10 @@
     {
         /// <summary>
         /// map of namespace IDs (as integers) to NamespaceInfo objects
-        /// /// </summary>
-        readonly private Dictionary<int, NamespaceInfo> namespaceMap;
+        /// </summary>
+        private readonly Dictionary<int, NamespaceInfo> namespaceMap;
 
-        readonly private ManualResetEvent completeEvent = new(false);
+        private readonly ManualResetEvent completeEvent = new(false);
 
         /// <summary>
         /// Initializes a new NamespaceInfos collection

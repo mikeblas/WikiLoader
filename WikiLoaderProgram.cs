@@ -26,14 +26,14 @@ namespace WikiReader
             };
         }
 
-        static void Main(string[] args)
+        private static void Main(string[] args)
         {
             // string fileName = @"C:\Junk\enwiki-latest-pages-meta-history1.xml-p000000010p000002933";
             // string fileName = @"f:\junk\enwiki-latest-pages-meta-history4.xml-p000066951p000074581";
             // string fileName = @"f:\junk\enwiki-latest-pages-meta-history10.xml-p000925001p000972034";
             // string fileName = @"f:\junk\enwiki-latest-pages-meta-history19.xml-p009225001p009575994";
             // string fileName = @"f:\junk\enwiki-latest-pages-meta-history3.xml-p000039229p000043715";
-            string fileName = @"f:\wiki\20220820\unzipped\enwiki-20220820-stub-meta-history2.xml";
+            string fileName = @"f:\wiki\20220820\unzipped\enwiki-20220820-stub-meta-history3.xml";
             if (args.Length >= 1)
                 fileName = args[0];
 

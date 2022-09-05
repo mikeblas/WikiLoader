@@ -1,58 +1,71 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-
 namespace WikiReader
 {
+    using System;
+    using System.Collections.Generic;
+    using System.Linq;
+    using System.Text;
+    using System.Threading.Tasks;
+
     /// <summary>
     /// Represents a user; contains their name (as a string) and an ID integer.
     /// </summary>
     class User
     {
-        readonly string? _userName = null;
-        readonly string? _ipAddress = null;
-        readonly long _userId = 0;
+        private readonly string? userName = null;
+        private readonly string? ipAddress = null;
+        private readonly long userId = 0;
 
         /// <summary>
-        /// Create a User object
+        /// Initializes a new instance of the <see cref="User"/> class for a given ID and name.
         /// </summary>
-        /// <param name="userId">user ID integer</param>
-        /// <param name="userName">user name as a string</param>
+        /// <param name="userId">user ID integer.</param>
+        /// <param name="userName">user name as a string.</param>
         public User(long userId, string userName)
         {
-            _userId = userId;
-            _userName = userName;
+            this.userId = userId;
+            this.userName = userName;
         }
 
         /// <summary>
-        /// Create an anonymous user object, identified only by the IP address
+        /// Initializes a new instance of the <see cref="User"/> class for an anonymous user,
+        /// known only by IP address.
         /// </summary>
-        /// <param name="ipAddress">IP address, as a string, where the edit was logged</param>
+        /// <param name="ipAddress">IP address, as a string, where the edit was logged.</param>
         public User(string ipAddress)
         {
-            _ipAddress = ipAddress;
+            this.ipAddress = ipAddress;
         }
 
+        /// <summary>
+        /// Gets a value indicating whether this object represents an anonymous user or not.
+        /// </summary>
         public bool IsAnonymous
         {
-            get { return (_userId == 0) && (_userName == null); }
+            get { return (this.userId == 0) && (this.userName == null); }
         }
 
+        /// <summary>
+        /// Gets the ID of this user; 0 if the user is anonymous.
+        /// </summary>
         public long ID
         {
-            get { return _userId; }
+            get { return this.userId; }
         }
 
+        /// <summary>
+        /// Gets the name of this user, null if anonymous.
+        /// </summary>
         public string? Name
         {
-            get { return _userName; }
+            get { return this.userName; }
         }
 
+        /// <summary>
+        /// Gets the IPAddress of this user, null if anonymous.
+        /// </summary>
         public string? IPAddress
         {
-            get { return _ipAddress; }
+            get { return this.ipAddress; }
         }
     }
 }

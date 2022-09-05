@@ -1,22 +1,22 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-
-namespace WikiReader
+﻿namespace WikiReader
 {
+    using System;
+    using System.Collections.Generic;
+    using System.Linq;
+    using System.Text;
+    using System.Threading.Tasks;
+
     /// <summary>
     /// Represense a namespace.
-    /// 
-    /// Includes the name and Id of the namespace. Also manages a count
+    ///
+    /// Includes the name and ID of the namespace. Also manages a count
     /// which is used to tally the number of articles read per namespace.
     /// </summary>
     class NamespaceInfo
     {
-        int _pageCount;
-        readonly int _namespaceId;
-        readonly string _name;
+        private int pageCount;
+        private readonly int namespaceID;
+        private readonly string name;
 
         /// <summary>
         /// Create a new namespace instance.
@@ -27,29 +27,41 @@ namespace WikiReader
         /// <param name="namespaceId">ID for this namespace</param>
         public NamespaceInfo(string name, int namespaceId)
         {
-            _name = name;
-            _pageCount = 1;
-            _namespaceId = namespaceId;
+            this.name = name;
+            this.pageCount = 1;
+            this.namespaceID = namespaceId;
         }
 
+        /// <summary>
+        /// Gets the ID of this namespace.
+        /// </summary>
         public int ID
         {
-            get { return _namespaceId; }
+            get { return this.namespaceID; }
         }
 
+        /// <summary>
+        /// Gets the naem of this Namespace.
+        /// </summary>
         public string Name
         {
-            get { return _name; }
+            get { return this.name; }
         }
 
+        /// <summary>
+        /// Gets the number of pages we have in this namespace.
+        /// </summary>
         public int PageCount
         {
-            get { return _pageCount; }
+            get { return this.pageCount; }
         }
 
+        /// <summary>
+        /// Increments the count of pages we have in this namespace by one.
+        /// </summary>
         public void IncrementCount()
         {
-            _pageCount += 1;
+            this.pageCount += 1;
         }
     }
 }

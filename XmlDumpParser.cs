@@ -48,7 +48,7 @@ namespace WikiReader
 
         private bool quitNow = false;
 
-        private long skipUntilPosition = 341958656;
+        private long skipUntilPosition = 14182422125;
 
         private FileStream s;
         private XmlReader reader;
@@ -280,7 +280,7 @@ namespace WikiReader
                         // write some stats
                         Console.WriteLine(
                             $"{s.Position} / {s.Length}: {(s.Position * 100.0) / s.Length:##0.0000}\n" +
-                            $"   Queued {pageName}: {revisionCount} revisions, {minorRevisionCount} minor revisions\n" +
+                            $"   Queued [[{pageName}]]: {revisionCount} revisions, {minorRevisionCount} minor revisions\n" +
                             $"   {running} running, {queued} queued, {pendingRevisions} pending revisions");
 
                         // tally our stats

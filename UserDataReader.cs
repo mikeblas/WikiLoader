@@ -7,12 +7,12 @@
     internal class UserDataReader : IDataReader
     {
         // list of users this reader will supply
-        readonly List<User> _contributors = new();
+        private readonly List<User> _contributors = new();
 
         /// <summary>
         /// What user would be next read?
         /// </summary>
-        int _currentUser = -1;
+        private int _currentUser = -1;
 
         public UserDataReader(HashSet<long> insertedUserSet, IList<PageRevision> pages)
         {
@@ -248,4 +248,3 @@
         }
     }
 }
-

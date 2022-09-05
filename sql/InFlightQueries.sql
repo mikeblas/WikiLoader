@@ -38,6 +38,9 @@ select * from sys.indexes where index_id = 1 and object_id = 277576027
 sp_help pagerevision
 _pok
 
+sp_help page;
+
+sp_help pagerevision;
 
 select count(*) FROM [Revisions_ZINC_12];
 
@@ -78,3 +81,36 @@ DBCC page (23, 4, 10105296) --Database_id,file_id,page_id
 select object_name(277576027)
 153
 256
+
+
+sp_help pageRevision
+
+
+SET STATISTICS IO ON;
+select PageRevisionID FROM PageRevision WHERE PageID = 82131;
+
+SELECT top 100 * FROM [User]
+LEFT JOIN 
+(
+select ContributorID, COUNT(1) AS ContributorCount FROM PageRevision WHERE PageID = 82131
+GROUP BY ContributorID
+) AS X 
+ON X.ContributorID = [User].UserID
+
+sp_help [user]
+
+ORDER BY 2 DESC;
+
+select top 1000 * from page ORDER BY PageID DESC
+
+
+
+select top 10 * FROM PageRevision
+WHERE ContributorID IS NOT NULL
+AND ContributorID NOT IN (SELECT ContributorID FROM [User])
+
+
+
+select count(*) from activity
+
+sp_help activity

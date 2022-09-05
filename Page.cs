@@ -15,29 +15,29 @@
     class Page : IInsertable
     {
         /// <summary>
-        /// Name of the page we represent
+        /// Name of the page we represent.
         /// </summary>
-        readonly string _pageName;
+        private readonly string pageName;
 
         /// <summary>
-        /// Name of the page redirected to, if not null
+        /// Name of the page redirected to, null if not a redirect.
         /// </summary>
-        readonly string? _redirectTitle;
+        private readonly string? redirectTitle;
 
         /// <summary>
-        /// Namespace which holds that page
+        /// Namespace which holds that page.
         /// </summary>
-        readonly int _namespaceId = 0;
+        private readonly int namespaceId = 0;
 
         /// <summary>
-        ///  ID number of this page
+        /// ID number of this page.
         /// </summary>
-        readonly long _pageId = 0;
+        private readonly long pageId = 0;
 
-        readonly private long _runId;
-        readonly private long _filePosition;
+        private readonly long runId;
+        private readonly long filePosition;
 
-        readonly ManualResetEvent completeEvent = new(false);
+        private readonly ManualResetEvent completeEvent = new(false);
 
         public ManualResetEvent GetCompletedEvent()
         {
@@ -47,12 +47,12 @@
         /// <summary>
         /// set indicating which users we've already inserted
         /// </summary>
-        static readonly HashSet<long> _insertedUserSet = new ();
+        static readonly HashSet<long> insertedUserSet = new ();
 
         /// <summary>
         /// Map of revisions from RevisionID to the PageRevision at that ID
         /// </summary>
-        private readonly SortedList<long, PageRevision> _revisions = new ();
+        private readonly SortedList<long, PageRevision> revisions = new ();
 
         private int _usersAdded = 0;
         private int _usersAlready = 0;
@@ -67,35 +67,36 @@
         /// <param name="pageName">name of this page</param>
         public Page(int namespaceId, long pageId, string pageName, string? redirectName, long runId, long filePosition)
         {
-            _namespaceId = namespaceId;
-            _pageName = pageName;
-            _pageId = pageId;
-            _redirectTitle = redirectName;
-            _runId = runId;
-            _filePosition = filePosition;
+            this.namespaceId = namespaceId;
+            this.pageName = pageName;
+            this.pageId = pageId;
+            this.redirectTitle = redirectName;
+            this.runId = runId;
+            this.filePosition = filePosition;
         }
 
         /// <summary>
-        /// add a revision to the history of this page in memory
+        /// add a revision to the history of this page in memory.
         /// </summary>
         /// <param name="pr"></param>
         public void AddRevision(PageRevision pr)
         {
-            if (_revisions.ContainsKey(pr.RevisionId))
+            if (this.revisions.ContainsKey(pr.RevisionId))
             {
-                Console.WriteLine($"Page {_pageName} already has revision {pr.RevisionId}");
-                Console.WriteLine($"current: {_revisions[pr.RevisionId].TimeStamp} with id {_revisions[pr.RevisionId].RevisionId}, parent id {_revisions[pr.RevisionId].ParentRevisionId}");
+                Console.WriteLine($"Page [[{this.pageName}]] already has revision {pr.RevisionId}");
+                Console.WriteLine($"current: {this.revisions[pr.RevisionId].TimeStamp} with id {this.revisions[pr.RevisionId].RevisionId}, parent id {this.revisions[pr.RevisionId].ParentRevisionId}");
                 Console.WriteLine($"    new: {pr.TimeStamp} with id {pr.RevisionId}, parent id {pr.ParentRevisionId}");
             }
-            _revisions.Add(pr.RevisionId, pr);
+
+            this.revisions.Add(pr.RevisionId, pr);
 
             // always keep first and last revisions
             // keep every 100th revision
             // keep the most recent revision
-            int nCandidate = _revisions.Count - 2;
+            int nCandidate = this.revisions.Count - 2;
             if (nCandidate > 0 && nCandidate % 100 != 0)
             {
-                _revisions.Values[nCandidate].Text = null;
+                this.revisions.Values[nCandidate].Text = null;
             }
         }
 
@@ -108,24 +109,24 @@
         /// <param name="progress">InsertableProgress interface for progress callbacks</param>
         public void Insert(IInsertable? previous, DatabasePump pump, SqlConnection conn, IInsertableProgress progress)
         {
-            progress.AddPendingRevisions(_revisions.Count);
+            progress.AddPendingRevisions(revisions.Count);
 
             // first, insert all the users
-            BulkInsertUsers(pump, conn);
+            this.BulkInsertUsers(pump, conn);
 
             // insert the page record itself
-            InsertPage(pump, progress, conn);
+            this.InsertPage(pump, progress, conn);
 
             // then, insert the revisions
-            SelectAndInsertRevisions(pump, progress, previous, conn);
+            this.SelectAndInsertRevisions(pump, progress, previous, conn);
 
             // insert the text that we have
-            BulkInsertRevisionText(pump, conn);
+            this.BulkInsertRevisionText(pump, conn);
 
             Console.WriteLine(
-                $"{_pageName}\n" +
-                $"   {_revsAdded} revisions added, {_revsAlready} revisions exist\n" +
-                $"   {_usersAdded} users added, {_usersAlready} users exist");
+                $"[[{this.pageName}]]\n" +
+                $"   {this._revsAdded} revisions added, {this._revsAlready} revisions exist\n" +
+                $"   {this._usersAdded} users added, {this._usersAlready} users exist");
 
             UpdateProgress(conn);
         }
@@ -142,9 +143,9 @@
                 "SELECT RunID, ReportTime, FilePosition, PageID " +
                 "  FROM X " +
                 " WHERE NOT EXISTS (SELECT RunID FROM RunProgress WHERE RunID = X.RunID)", conn);
-            insertCommand.Parameters.AddWithValue("@RunID", _runId);
-            insertCommand.Parameters.AddWithValue("@FilePosition", _filePosition);
-            insertCommand.Parameters.AddWithValue("@PageID", _pageId);
+            insertCommand.Parameters.AddWithValue("@RunID", this.runId);
+            insertCommand.Parameters.AddWithValue("@FilePosition", this.filePosition);
+            insertCommand.Parameters.AddWithValue("@PageID", this.pageId);
 
             int rows = insertCommand.ExecuteNonQuery();
 
@@ -159,19 +160,19 @@
                     " WHERE FilePosition < @FilePosition " +
                     "   AND RunID = @RunID", conn);
 
-                updateCommand.Parameters.AddWithValue("@RunID", _runId);
-                updateCommand.Parameters.AddWithValue("@FilePosition", _filePosition);
-                updateCommand.Parameters.AddWithValue("@PageID", _pageId);
+                updateCommand.Parameters.AddWithValue("@RunID", this.runId);
+                updateCommand.Parameters.AddWithValue("@FilePosition", this.filePosition);
+                updateCommand.Parameters.AddWithValue("@PageID", this.pageId);
 
                 updateCommand.ExecuteNonQuery();
             }
         }
 
         /// <summary>
-        /// Insert the users who have edited this page. 
+        /// Insert the users who have edited this page.
         /// </summary>
-        /// <param name="pump">DatabasePump to record our activity</param>
-        /// <param name="conn">connection to use for insertion</param>
+        /// <param name="pump">DatabasePump to record our activity.</param>
+        /// <param name="conn">connection to use for insertion.</param>
         private void BulkInsertUsers(DatabasePump pump, SqlConnection conn)
         {
             // build a unique temporary table name
@@ -189,10 +190,10 @@
             try
             {
                 // bulk insert into the temporary table
-                UserDataReader udr = new(_insertedUserSet, _revisions.Values);
+                UserDataReader udr = new(insertedUserSet, this.revisions.Values);
                 SqlBulkCopy sbc = new(conn);
 
-                bulkActivity = pump.StartActivity("Bulk Insert Users", _namespaceId, _pageId, udr.Count);
+                bulkActivity = pump.StartActivity("Bulk Insert Users", this.namespaceId, this.pageId, udr.Count);
 
                 sbc.DestinationTableName = tempTableName;
                 sbc.ColumnMappings.Add("UserID", "UserID");
@@ -201,14 +202,14 @@
                 sbc.WriteToServer(udr);
                 Trace.Assert(conn.State == ConnectionState.Open);
 
-                pump.CompleteActivity(bulkActivity, _insertedUserSet.Count, "inserted users");
+                pump.CompleteActivity(bulkActivity, insertedUserSet.Count, "inserted users");
                 bulkActivity = -1;
 
                 // merge up.
                 SqlException? mergeException = null;
                 for (int retries = 10; retries > 0; retries--)
                 {
-                    long mergeActivity = pump.StartActivity("Merge Users", _namespaceId, _pageId, udr.Count);
+                    long mergeActivity = pump.StartActivity("Merge Users", this.namespaceId, this.pageId, udr.Count);
                     try
                     {
                         using var tableMerge = new SqlCommand(
@@ -217,8 +218,8 @@
                             "WHEN NOT MATCHED THEN " +
                             " INSERT (UserID, UserName) VALUES (SRC.UserID, SRC.UserName);", conn);
                         tableMerge.CommandTimeout = 300;
-                        _usersAdded = tableMerge.ExecuteNonQuery();
-                        _usersAlready = udr.Count - _usersAdded;
+                        this._usersAdded = tableMerge.ExecuteNonQuery();
+                        this._usersAlready = udr.Count - this._usersAdded;
                         mergeException = null;
                         break;
                     }
@@ -226,38 +227,38 @@
                     {
                         if (sex.Number == 1205)
                         {
-                            Console.WriteLine($"{_pageName}: Deadlock encountered during USER merge of {udr.Count} rows. Retry {retries}");
+                            Console.WriteLine($"[[{this.pageName}]]: Deadlock encountered during USER merge of {udr.Count} rows. Retry {retries}");
                             mergeException = sex;
                             Thread.Sleep(2500);
                             continue;
                         }
                         else if (sex.Number == -2)
                         {
-                            Console.WriteLine($"{_pageName}: Timeout encountered during USER merge of {udr.Count} rows. Retry {retries}");
+                            Console.WriteLine($"[[{this.pageName}]]: Timeout encountered during USER merge of {udr.Count} rows. Retry {retries}");
                             mergeException = sex;
                             Thread.Sleep(2500);
                             continue;
                         }
                         else
                         {
-                            Console.WriteLine($"{_pageName}: Exception during USER merge of {udr.Count} rows. {sex.Number}: {sex.Source}\n{sex.Message}");
+                            Console.WriteLine($"[[{this.pageName}]]: Exception during USER merge of {udr.Count} rows. {sex.Number}: {sex.Source}\n{sex.Message}");
                             throw sex;
                         }
                     }
                     catch (InvalidOperationException ioe)
                     {
-                        Console.WriteLine($"{_pageName}: Exception during PageRevision merge of {udr.Count} rows. {ioe.Message}\n{ioe.StackTrace}");
+                        Console.WriteLine($"[[{this.pageName}]]: Exception during PageRevision merge of {udr.Count} rows. {ioe.Message}\n{ioe.StackTrace}");
                         throw ioe;
                     }
                     finally
                     {
-                        pump.CompleteActivity(mergeActivity, _usersAdded, mergeException?.Message);
+                        pump.CompleteActivity(mergeActivity, this._usersAdded, mergeException?.Message);
                     }
 
                 }
                 if (mergeException != null)
                 {
-                    Console.WriteLine($"{_pageName}: USER merge failed 10 times: {mergeException.Number}, {mergeException.Source}\n{mergeException.Message}");
+                    Console.WriteLine($"[[{this.pageName}]]: USER merge failed 10 times: {mergeException.Number}, {mergeException.Source}\n{mergeException.Message}");
                     throw mergeException;
                 }
             }
@@ -284,9 +285,9 @@
         private void BulkInsertRevisionText(DatabasePump pump, SqlConnection conn)
         {
             // build our data reader first
-            PageRevisionTextDataReader prtdr = new(_namespaceId, _pageId, _revisions.Values);
+            PageRevisionTextDataReader prtdr = new(this.namespaceId, this.pageId, this.revisions.Values);
 
-            long bulkActivity = pump.StartActivity("Bulk Insert Text", _namespaceId, _pageId, prtdr.Count);
+            long bulkActivity = pump.StartActivity("Bulk Insert Text", this.namespaceId, this.pageId, prtdr.Count);
 
             // if it inserts nothing, skip all this work
             if (prtdr.Count == 0)
@@ -301,7 +302,7 @@
             // create that temporary table
             using var tableCreate = new SqlCommand(
                 $"CREATE TABLE [{tempTableName}] (" +
-                "   NamespaceID INT NOT NULL, " +     
+                "   NamespaceID INT NOT NULL, " +
                 "	PageID BIGINT NOT NULL," +
                 "	PageRevisionID BIGINT NOT NULL," +
                 "   ArticleText TEXT NOT NULL);", conn);
@@ -328,7 +329,7 @@
                 SqlException? mergeException = null;
                 for (int retries = 10; retries > 0; retries--)
                 {
-                    long mergeActivity = pump.StartActivity("Merge Text", _namespaceId, _pageId, prtdr.Count);
+                    long mergeActivity = pump.StartActivity("Merge Text", this.namespaceId, this.pageId, prtdr.Count);
                     try
                     {
                         using var tableMerge = new SqlCommand(
@@ -339,8 +340,8 @@
                             "  AND [PageRevisionText].PageRevisionID = SRC.PageRevisionID " +
                             "WHEN NOT MATCHED THEN " +
                             "INSERT (NamespaceID, PageID, PageRevisionID, ArticleText) VALUES (SRC.NamespaceID, SRC.PageID, SRC.PageRevisionID, SRC.ArticleText);", conn);
-                        _usersAdded = tableMerge.ExecuteNonQuery();
-                        _usersAlready = prtdr.Count - _usersAdded;
+                        this._usersAdded = tableMerge.ExecuteNonQuery();
+                        this._usersAlready = prtdr.Count - this._usersAdded;
                         mergeException = null;
                         break;
                     }
@@ -348,27 +349,27 @@
                     {
                         if (sex.Number == 1205)
                         {
-                            Console.WriteLine($"{_pageName}: Deadlock encountered during TEXT merge of {prtdr.Count} rows. Retry {retries}");
+                            Console.WriteLine($"[[{this.pageName}]]: Deadlock encountered during TEXT merge of {prtdr.Count} rows. Retry {retries}");
                             mergeException = sex;
                             Thread.Sleep(2500);
                             continue;
                         }
                         else if (sex.Number == -2)
                         {
-                            Console.WriteLine($"{_pageName}: Timeout encountered during TEXT merge of {prtdr.Count} rows. Retry {retries}");
+                            Console.WriteLine($"[[{this.pageName}]]: Timeout encountered during TEXT merge of {prtdr.Count} rows. Retry {retries}");
                             mergeException = sex;
                             Thread.Sleep(2500);
                             continue;
                         }
                         else
                         {
-                            Console.WriteLine($"{_pageName}: Exception during TEXT merge of {prtdr.Count} rows. {sex.Number}: {sex.Source}\n{sex.Message}");
+                            Console.WriteLine($"[[{this.pageName}]]: Exception during TEXT merge of {prtdr.Count} rows. {sex.Number}: {sex.Source}\n{sex.Message}");
                             throw sex;
                         }
                     }
                     catch (InvalidOperationException ioe)
                     {
-                        Console.WriteLine($"{_pageName}: Exception during TEXT merge of {prtdr.Count} rows. {ioe.Message}\n{ioe.StackTrace}");
+                        Console.WriteLine($"[[{this.pageName}]]: Exception during TEXT merge of {prtdr.Count} rows. {ioe.Message}\n{ioe.StackTrace}");
                         throw ioe;
                     }
                     finally
@@ -379,7 +380,7 @@
                 }
                 if (mergeException != null)
                 {
-                    Console.WriteLine($"{_pageName}: TEXT merge failed 10 times: {mergeException.Number}, {mergeException.Source}\n{mergeException.Message}");
+                    Console.WriteLine($"[[{this.pageName}]]: TEXT merge failed 10 times: {mergeException.Number}, {mergeException.Source}\n{mergeException.Message}");
                     throw mergeException;
                 }
             }
@@ -401,14 +402,14 @@
 
         private void SelectAndInsertRevisions(DatabasePump pump, IInsertableProgress progress, IInsertable? previous, SqlConnection conn)
         {
-            long checkActivityID = pump.StartActivity("Check existing PageRevisions", null, _pageId, _revisions.Count);
+            long checkActivityID = pump.StartActivity("Check existing PageRevisions", null, this.pageId, this.revisions.Count);
 
             // build a hash set of all the known revisions of this page
             HashSet<long> knownRevisions = new();
 
             using var cmdSelect = new SqlCommand("select PageRevisionID FROM PageRevision WHERE PageID = @PageID", conn);
-            cmdSelect.Parameters.AddWithValue("@NamespaceID", _namespaceId);
-            cmdSelect.Parameters.AddWithValue("@PageID", _pageId);
+            cmdSelect.Parameters.AddWithValue("@NamespaceID", this.namespaceId);
+            cmdSelect.Parameters.AddWithValue("@PageID", this.pageId);
             cmdSelect.CommandTimeout = 3600;
 
             using (var reader = cmdSelect.ExecuteReader())
@@ -419,22 +420,22 @@
 
             SortedList<long, PageRevision> neededRevisions = new();
 
-            foreach ((long revID, var rev) in _revisions)
+            foreach ((long revID, var rev) in this.revisions)
             {
                 if (knownRevisions.Contains(revID))
                 {
                     progress.CompleteRevisions(1);
-                    _revsAlready += 1;
+                    this._revsAlready += 1;
                     continue;
                 }
 
                 neededRevisions.Add(revID, rev);
             }
 
-            pump.CompleteActivity(checkActivityID, _revisions.Count, "Processed");
+            pump.CompleteActivity(checkActivityID, this.revisions.Count, "Processed");
 
 
-            BulkInsertPageRevisions(pump, progress, previous, neededRevisions, conn);
+            this.BulkInsertPageRevisions(pump, progress, previous, neededRevisions, conn);
         }
 
 
@@ -447,10 +448,10 @@
             {
                 if (neededRevisions.Count > 0)
                 {
-                    bulkActivityID = pump.StartActivity("Bulk Insert PageRevisions", _namespaceId, _pageId, neededRevisions.Count);
+                    bulkActivityID = pump.StartActivity("Bulk Insert PageRevisions", this.namespaceId, this.pageId, neededRevisions.Count);
 
                     // bulk insert into the temporary table
-                    PageRevisionDataReader prdr = new(_namespaceId, _pageId, neededRevisions.Values);
+                    PageRevisionDataReader prdr = new(this.namespaceId, this.pageId, neededRevisions.Values);
                     var sbc = new SqlBulkCopy(conn);
                     sbc.BulkCopyTimeout = 3600;
 
@@ -477,7 +478,7 @@
                     bulkActivityID = -1;
 
                     progress.CompleteRevisions(neededRevisions.Count);
-                    _revsAdded += neededRevisions.Count;
+                    this._revsAdded += neededRevisions.Count;
                 }
 
                 // wait until the previous revision is done, if we've got one
@@ -486,7 +487,6 @@
                     // Console.WriteLine($"[[{(this as IInsertable).ObjectName}]] waiting on [[{previous.ObjectName}]]");
 
                     ManualResetEvent mre = previous.GetCompletedEvent();
-                    mre.WaitOne();
                     while (!mre.WaitOne(1000))
                         Console.WriteLine($"[[{(this as IInsertable).ObjectName}]] is waiting on [[{previous.ObjectName}]]");
                 }
@@ -513,7 +513,7 @@
         private void BulkMergeRevisions(DatabasePump pump, IInsertableProgress progress, IInsertable? previous, SqlConnection conn)
         {
             // build a unique temporary table name
-            String tempTableName = $"#Revisions_{System.Environment.MachineName}_{Environment.CurrentManagedThreadId}";
+            string tempTableName = $"#Revisions_{System.Environment.MachineName}_{Environment.CurrentManagedThreadId}";
 
             // create that temporary table
             using var tableCreate = new SqlCommand(
@@ -537,10 +537,10 @@
 
             try {
                 // bulk insert into the temporary table
-                PageRevisionDataReader prdr = new(_namespaceId, _pageId, _revisions.Values);
+                PageRevisionDataReader prdr = new(this.namespaceId, this.pageId, this.revisions.Values);
                 var sbc = new SqlBulkCopy(conn);
 
-                bulkActivityID = pump.StartActivity("Bulk Insert PageRevisions", _namespaceId, _pageId, prdr.Count);
+                bulkActivityID = pump.StartActivity("Bulk Insert PageRevisions", this.namespaceId, this.pageId, prdr.Count);
 
                 sbc.DestinationTableName = tempTableName;
                 sbc.ColumnMappings.Add(new SqlBulkCopyColumnMapping("PageID", "PageID"));
@@ -575,7 +575,7 @@
                 SqlException? mergeException = null;
                 for (int retries = 10; retries > 0; retries--)
                 {
-                    long mergeActivity = pump.StartActivity("Merge PageRevisions", _namespaceId, _pageId, prdr.Count);
+                    long mergeActivity = pump.StartActivity("Merge PageRevisions", this.namespaceId, this.pageId, prdr.Count);
                     try
                     {
                         using var tableMerge = new SqlCommand(
@@ -593,8 +593,8 @@
                             "	     SRC.TextAvailable, SRC.IsMinor, SRC.ArticleTextLength, SRC.TextDeleted, SRC.UserDeleted);",
                             conn);
                         tableMerge.CommandTimeout = 3600;
-                        _revsAdded = tableMerge.ExecuteNonQuery();
-                        _revsAlready = prdr.Count - _revsAdded;
+                        this._revsAdded = tableMerge.ExecuteNonQuery();
+                        this._revsAlready = prdr.Count - this._revsAdded;
                         mergeException = null;
                         progress.CompleteRevisions(prdr.Count);
                         break;
@@ -603,38 +603,38 @@
                     {
                         if (sex.Number == 1205)
                         {
-                            Console.WriteLine($"{_pageName}: Deadlock encountered during PageRevision merge of {prdr.Count} rows. Retry {retries}");
+                            Console.WriteLine($"[[{this.pageName}]]: Deadlock encountered during PageRevision merge of {prdr.Count} rows. Retry {retries}");
                             mergeException = sex;
                             Thread.Sleep(2500);
                             continue;
                         }
                         else if (sex.Number == -2)
                         {
-                            Console.WriteLine($"{_pageName}: Timeout encountered during PageRevision merge of {prdr.Count} rows. Retry {retries}");
+                            Console.WriteLine($"[[{this.pageName}]]: Timeout encountered during PageRevision merge of {prdr.Count} rows. Retry {retries}");
                             mergeException = sex;
                             Thread.Sleep(2500);
                             continue;
                         }
                         else
                         {
-                            Console.WriteLine($"{_pageName}: Exception during PageRegision merge of {prdr.Count} rows. {sex.Number}: {sex.Source}\n{sex.Message}");
+                            Console.WriteLine($"[[{this.pageName}]]: Exception during PageRegision merge of {prdr.Count} rows. {sex.Number}: {sex.Source}\n{sex.Message}");
                             throw sex;
                         }
                     }
                     catch (InvalidOperationException ioe)
                     {
-                        Console.WriteLine($"{_pageName}: Exception during PageRevision merge of {prdr.Count} rows. {ioe.Message}\n{ioe.StackTrace}");
+                        Console.WriteLine($"[[{this.pageName}]]: Exception during PageRevision merge of {prdr.Count} rows. {ioe.Message}\n{ioe.StackTrace}");
                         throw ioe;
                     }
                     finally
                     {
-                        pump.CompleteActivity(mergeActivity, _revsAdded, mergeException?.Message);
+                        pump.CompleteActivity(mergeActivity, this._revsAdded, mergeException?.Message);
                     }
                 }
 
                 if (mergeException != null)
                 {
-                    Console.WriteLine($"{_pageName}: PageRevision merge failed 10 times: {mergeException.Number}, {mergeException.Source}\n{mergeException.Message}");
+                    Console.WriteLine($"[[{this.pageName}]]: PageRevision merge failed 10 times: {mergeException.Number}, {mergeException.Source}\n{mergeException.Message}");
                     throw mergeException;
                 }
             }
@@ -667,12 +667,12 @@
         /// <param name="conn">Connection to use for insertion</param>
         private void InsertPage(DatabasePump pump, IInsertableProgress progress, SqlConnection conn)
         {
-            long activityID = pump.StartActivity("Insert Page", _namespaceId, _pageId, 1);
+            long activityID = pump.StartActivity("Insert Page", this.namespaceId, this.pageId, 1);
             using var cmd = new SqlCommand("INSERT INTO [Page] (NamespaceID, PageID, PageName, RedirectTitle) VALUES (@NamespaceID, @PageID, @PageName, @RedirectTitle);", conn);
-            cmd.Parameters.AddWithValue("@NamespaceID", _namespaceId);
-            cmd.Parameters.AddWithValue("@PageID", _pageId);
-            cmd.Parameters.AddWithValue("@PageName", _pageName);
-            cmd.Parameters.AddWithValue("@RedirectTitle", _redirectTitle ?? (object)DBNull.Value);
+            cmd.Parameters.AddWithValue("@NamespaceID", this.namespaceId);
+            cmd.Parameters.AddWithValue("@PageID", this.pageId);
+            cmd.Parameters.AddWithValue("@PageName", this.pageName);
+            cmd.Parameters.AddWithValue("@RedirectTitle", this.redirectTitle ?? (object)DBNull.Value);
 
             Exception? exResult = null;
             int inserted = 0;
@@ -686,14 +686,14 @@
             {
                 exResult = sex;
                 if (sex.Number == 8152)
-                    Console.WriteLine($"Error: page name is too long at {_pageName.Length} characters");
+                    Console.WriteLine($"Error: page name is too long at {this.pageName.Length} characters");
                 else if (sex.Number == 2601 || sex.Number == 2627)
                 {
                     // duplicate! we'll do an update instead
                     using var updateCmd = new SqlCommand("UPDATE [Page] SET RedirectTitle = @RedirectTitle WHERE PageID = @PageID AND NamespaceID = @NamespaceID;", conn);
-                    updateCmd.Parameters.AddWithValue("@NamespaceID", _namespaceId);
-                    updateCmd.Parameters.AddWithValue("@PageID", _pageId);
-                    updateCmd.Parameters.AddWithValue("@RedirectTitle", _redirectTitle ?? (object)DBNull.Value);
+                    updateCmd.Parameters.AddWithValue("@NamespaceID", this.namespaceId);
+                    updateCmd.Parameters.AddWithValue("@PageID", this.pageId);
+                    updateCmd.Parameters.AddWithValue("@RedirectTitle", this.redirectTitle ?? (object)DBNull.Value);
 
                     updateCmd.ExecuteNonQuery();
                     exResult = null;
@@ -717,9 +717,9 @@
         /// <summary>
         /// Gets our object name; this is used to name the connection in SQL Server.
         /// </summary>
-        String IInsertable.ObjectName
+        string IInsertable.ObjectName
         {
-            get { return "Page Inserter (" + _pageName + ")"; }
+            get { return $"Page Inserter ({this.pageName})"; }
         }
 
         /// <summary>
@@ -727,7 +727,7 @@
         /// </summary>
         int IInsertable.RevisionCount
         {
-            get { return _revisions.Count; }
+            get { return this.revisions.Count; }
         }
     }
 
