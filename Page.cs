@@ -32,10 +32,10 @@
         /// <summary>
         ///  ID number of this page
         /// </summary>
-        readonly Int64 _pageId = 0;
+        readonly long _pageId = 0;
 
-        readonly private Int64 _runId;
-        readonly private Int64 _filePosition;
+        readonly private long _runId;
+        readonly private long _filePosition;
 
         readonly ManualResetEvent completeEvent = new(false);
 
@@ -47,12 +47,12 @@
         /// <summary>
         /// set indicating which users we've already inserted
         /// </summary>
-        static readonly HashSet<Int64> _insertedUserSet = new ();
+        static readonly HashSet<long> _insertedUserSet = new ();
 
         /// <summary>
         /// Map of revisions from RevisionID to the PageRevision at that ID
         /// </summary>
-        private readonly SortedList<Int64, PageRevision> _revisions = new ();
+        private readonly SortedList<long, PageRevision> _revisions = new ();
 
         private int _usersAdded = 0;
         private int _usersAlready = 0;
@@ -60,12 +60,12 @@
         private int _revsAlready = 0;
 
         /// <summary>
-        /// Create a new Page instance
+        /// Initializes a new instance of the <see cref="Page"/> class.
         /// </summary>
         /// <param name="namespaceId">namespaceId where this page lives</param>
         /// <param name="pageId">pageID for this page</param>
         /// <param name="pageName">name of this page</param>
-        public Page(int namespaceId, Int64 pageId, string pageName, string? redirectName, Int64 runId, Int64 filePosition)
+        public Page(int namespaceId, long pageId, string pageName, string? redirectName, long runId, long filePosition)
         {
             _namespaceId = namespaceId;
             _pageName = pageName;
@@ -404,7 +404,7 @@
             long checkActivityID = pump.StartActivity("Check existing PageRevisions", null, _pageId, _revisions.Count);
 
             // build a hash set of all the known revisions of this page
-            HashSet<Int64> knownRevisions = new();
+            HashSet<long> knownRevisions = new();
 
             using var cmdSelect = new SqlCommand("select PageRevisionID FROM PageRevision WHERE PageID = @PageID", conn);
             cmdSelect.Parameters.AddWithValue("@NamespaceID", _namespaceId);
@@ -414,12 +414,12 @@
             using (var reader = cmdSelect.ExecuteReader())
             {
                 while (reader.Read())
-                    knownRevisions.Add((Int64)reader["PageRevisionID"]);
+                    knownRevisions.Add((long)reader["PageRevisionID"]);
             }
 
-            SortedList<Int64, PageRevision> neededRevisions = new();
+            SortedList<long, PageRevision> neededRevisions = new();
 
-            foreach ((Int64 revID, var rev) in _revisions)
+            foreach ((long revID, var rev) in _revisions)
             {
                 if (knownRevisions.Contains(revID))
                 {
@@ -438,7 +438,7 @@
         }
 
 
-        private void BulkInsertPageRevisions(DatabasePump pump, IInsertableProgress progress, IInsertable? previous, SortedList<Int64, PageRevision> neededRevisions, SqlConnection conn)
+        private void BulkInsertPageRevisions(DatabasePump pump, IInsertableProgress progress, IInsertable? previous, SortedList<long, PageRevision> neededRevisions, SqlConnection conn)
         {
             long bulkActivityID = -1;
 
@@ -506,7 +506,7 @@
             finally
             {
                 // signal the next in the chain of waiters
-                completeEvent.Set();
+                this.completeEvent.Set();
             }
         }
 
@@ -715,7 +715,7 @@
         }
 
         /// <summary>
-        /// Get our object name; this is used to name the connection in SQL Server
+        /// Gets our object name; this is used to name the connection in SQL Server.
         /// </summary>
         String IInsertable.ObjectName
         {
