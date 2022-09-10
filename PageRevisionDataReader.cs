@@ -4,55 +4,56 @@
     using System.Collections.Generic;
     using System.Data;
 
-    class PageRevisionDataReader : IDataReader
+    internal class PageRevisionDataReader : IDataReader
     {
         // list of PageRevisions this reader will supply
-        readonly List<PageRevision> _revisions = new();
+        private readonly List<PageRevision> revisions = new ();
 
         /// <summary>
         /// What revision would be next read?
         /// </summary>
-        int _currentRevision = -1;
-        readonly int _namespaceID;
-        readonly long _pageID;
+        private readonly int namespaceID;
+        private readonly long pageID;
 
-        readonly Dictionary<string, int> _columnMap = new();
-        readonly Dictionary<int, string> _indexMap = new();
+        private readonly Dictionary<string, int> columnMap = new ();
+        private readonly Dictionary<int, string> indexMap = new ();
+
+        private int _currentRevision = -1;
 
         public PageRevisionDataReader(int namespaceID, long pageID, IList<PageRevision> pages)
         {
-            _namespaceID = namespaceID;
-            _pageID = pageID;
+            this.namespaceID = namespaceID;
+            this.pageID = pageID;
             foreach (PageRevision pr in pages)
             {
-                _revisions.Add(pr);
+                this.revisions.Add(pr);
             }
 
-            AddColumn("NamespaceID");
-            AddColumn("PageID");
-            AddColumn("PageRevisionID");
-            AddColumn("ParentPageRevisionID");
-            AddColumn("RevisionWhen");
-            AddColumn("ContributorID");
-            AddColumn("Comment");
-            AddColumn("TextAvailable");
-            AddColumn("IsMinor");
-            AddColumn("ArticleTextLength");
-            AddColumn("UserDeleted");
-            AddColumn("TextDeleted");
-            AddColumn("IPAddress");
+            this.AddColumn("NamespaceID");
+            this.AddColumn("PageID");
+            this.AddColumn("PageRevisionID");
+            this.AddColumn("ParentPageRevisionID");
+            this.AddColumn("RevisionWhen");
+            this.AddColumn("ContributorID");
+            this.AddColumn("Comment");
+            this.AddColumn("TextAvailable");
+            this.AddColumn("IsMinor");
+            this.AddColumn("ArticleTextLength");
+            this.AddColumn("UserDeleted");
+            this.AddColumn("TextDeleted");
+            this.AddColumn("IPAddress");
         }
 
-        void AddColumn(string columnName)
+        private void AddColumn(string columnName)
         {
-            int index = _columnMap.Count;
-            _columnMap.Add(columnName, index);
-            _indexMap.Add(index, columnName);
+            int index = this.columnMap.Count;
+            this.columnMap.Add(columnName, index);
+            this.indexMap.Add(index, columnName);
         }
 
         public int Count
         {
-            get { return _revisions.Count; }
+            get { return this.revisions.Count; }
         }
 
         void IDataReader.Close()
@@ -81,9 +82,9 @@
 
         bool IDataReader.Read()
         {
-            if (_currentRevision + 1 >= _revisions.Count)
+            if (this._currentRevision + 1 >= this.revisions.Count)
                 return false;
-            _currentRevision += 1;
+            this._currentRevision += 1;
             return true;
         }
 
@@ -99,7 +100,7 @@
 
         int IDataRecord.FieldCount
         {
-            get { return _columnMap.Count; }
+            get { return this.columnMap.Count; }
         }
 
         bool IDataRecord.GetBoolean(int i)
@@ -184,7 +185,7 @@
 
         string IDataRecord.GetName(int i)
         {
-            if (_indexMap.TryGetValue(i, out string? name))
+            if (this.indexMap.TryGetValue(i, out string? name))
             {
                 return name;
             }
@@ -194,7 +195,7 @@
 
         int IDataRecord.GetOrdinal(string name)
         {
-            if (_columnMap.TryGetValue(name, out int index))
+            if (this.columnMap.TryGetValue(name, out int index))
                 return index;
 
             Console.WriteLine($"Couldn't find {name}");
@@ -208,20 +209,20 @@
 
         object IDataRecord.GetValue(int i)
         {
-            if (!_indexMap.TryGetValue(i, out string? columnName))
+            if (!indexMap.TryGetValue(i, out string? columnName))
                 throw new NotImplementedException();
 
             string columnNameLower = columnName.ToLower();
 
-            PageRevision record = _revisions[_currentRevision]; 
+            PageRevision record = this.revisions[this._currentRevision];
 
             switch (columnNameLower)
             {
                 case "namespaceid":
-                    return _namespaceID;
+                    return this.namespaceID;
 
                 case "pageid":
-                    return _pageID;
+                    return this.pageID;
 
                 case "isminor":
                     return record.IsMinor;

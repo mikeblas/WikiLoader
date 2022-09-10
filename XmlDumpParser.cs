@@ -11,28 +11,28 @@ namespace WikiReader
     internal class XmlDumpParser
     {
         // dictionary from string of user name to user ID
-        private readonly Dictionary<string, int> contributorMap = new();
+        private readonly Dictionary<string, int> contributorMap = new ();
 
         // dictionary from page names to Page objects
         // note that page objects internally contain a list of revisions
-        private readonly Dictionary<string, Page> pageMap = new();
+        private readonly Dictionary<string, Page> pageMap = new ();
 
         // dictionary from namespace ID to namespace string
-        private readonly NamespaceInfos namespaceMap = new();
+        private readonly NamespaceInfos namespaceMap = new ();
 
         private string? pageName = null;
         private string? redirectTitle = null;
         private long revisionId = 0;
         private long contributorId = 0;
         private long parentRevisionId = 0;
-        private LargestString contributorIp = new("contributorIp");
+        private LargestString contributorIp = new ("contributorIp");
         private int namespaceId = 0;
         private int pageId = 0;
         private bool inRevision = false;
         private bool inContributor = false;
         private DateTime timestamp = DateTime.MinValue;
-        private LargestString comment = new("Comment");
-        private LargestString articleText = new("ArticleText");
+        private LargestString comment = new ("Comment");
+        private LargestString articleText = new ("ArticleText");
         private string? contributorUserName = null;
         private int revisionCount = 0;
         private int minorRevisionCount = 0;
@@ -81,7 +81,6 @@ namespace WikiReader
             get { return this.comment; }
         }
 
-
         internal int ContributorCount
         {
             get { return this.contributorMap.Count; }
@@ -126,6 +125,76 @@ namespace WikiReader
             if (s.Position >= skipUntilPosition)
                 this.HandleSkippedStartElement();
         }
+
+        internal void HandleEndElement()
+        {
+            switch (this.reader.Name)
+            {
+                case "page":
+                    Debug.Assert(pageName != null, "Must have valid page name by now");
+
+                    if (s.Position < skipUntilPosition)
+                    {
+                        Console.WriteLine(
+                            $"{s.Position} / {s.Length}: {(s.Position * 100.0) / s.Length:##0.0000}\n" +
+                            "   Skipped");
+                        this.sawPageBegin = false;
+                    }
+                    else if (!sawPageBegin)
+                    {
+                        Console.WriteLine(
+                            $"{s.Position} / {s.Length}: {(s.Position * 100.0) / s.Length:##0.0000}\n" +
+                            "   Incompletely read");
+                        this.sawPageBegin = false;
+                    }
+                    else
+                    {
+                        // grab a copy of the page
+                        // clean it up and push it to the pump
+                        Page page = pageMap[pageName];
+                        pageMap.Remove(pageName);
+
+                        (long running, long queued, long pendingRevisions) = this.pump.Enqueue(page, previousPage);
+
+                        previousPage = page;
+
+                        // write some stats
+                        Console.WriteLine(
+                            $"{s.Position} / {s.Length}: {(s.Position * 100.0) / s.Length:##0.0000}\n" +
+                            $"   Queued [[{pageName}]]: {revisionCount} revisions, {minorRevisionCount} minor revisions\n" +
+                            $"   {running} running, {queued} queued, {pendingRevisions} pending revisions");
+
+                        // tally our stats
+                        totalRevisions += revisionCount;
+                        totalMinorRevisions += minorRevisionCount;
+                        totalPages += 1;
+
+                        // per namespace inserts
+                        namespaceMap[namespaceId].IncrementCount();
+
+                        // push the activity in
+                        if (currentActivity != -1)
+                        {
+                            pump.CompleteActivity(currentActivity, revisionCount, null);
+                            currentActivity = -1;
+                        }
+                    }
+
+                    // reset revision counts in reader
+                    this.revisionCount = 0;
+                    this.minorRevisionCount = 0;
+                    this.pageName = null;
+                    this.redirectTitle = null;
+
+                    if (WikiLoaderProgram.SigintReceived)
+                        this.quitNow = true;
+                    break;
+            }
+
+            if (s.Position >= skipUntilPosition && sawPageBegin)
+                HandleSkippedEndElement();
+        }
+
 
         private void HandleSkippedStartElement()
         {
@@ -256,76 +325,7 @@ namespace WikiReader
             }
         }
 
-        internal void HandleEndElement()
-        {
-            switch (this.reader.Name)
-            {
-                case "page":
-                    Debug.Assert(pageName != null, "Must have valid page name by now");
-
-                    if (s.Position < skipUntilPosition)
-                    {
-                        Console.WriteLine(
-                            $"{s.Position} / {s.Length}: {(s.Position * 100.0) / s.Length:##0.0000}\n" +
-                            "   Skipped");
-                        this.sawPageBegin = false;
-                    }
-                    else if (!sawPageBegin)
-                    {
-                        Console.WriteLine(
-                            $"{s.Position} / {s.Length}: {(s.Position * 100.0) / s.Length:##0.0000}\n" +
-                            "   Incompletely read");
-                        this.sawPageBegin = false;
-                    }
-                    else
-                    {
-                        // grab a copy of the page
-                        // clean it up and push it to the pump
-                        Page page = pageMap[pageName];
-                        pageMap.Remove(pageName);
-
-                        (long running, long queued, long pendingRevisions) = this.pump.Enqueue(page, previousPage);
-
-                        previousPage = page;
-
-                        // write some stats
-                        Console.WriteLine(
-                            $"{s.Position} / {s.Length}: {(s.Position * 100.0) / s.Length:##0.0000}\n" +
-                            $"   Queued [[{pageName}]]: {revisionCount} revisions, {minorRevisionCount} minor revisions\n" +
-                            $"   {running} running, {queued} queued, {pendingRevisions} pending revisions");
-
-                        // tally our stats
-                        totalRevisions += revisionCount;
-                        totalMinorRevisions += minorRevisionCount;
-                        totalPages += 1;
-
-                        // per namespace inserts
-                        namespaceMap[namespaceId].IncrementCount();
-
-                        // push the activity in
-                        if (currentActivity != -1)
-                        {
-                            pump.CompleteActivity(currentActivity, revisionCount, null);
-                            currentActivity = -1;
-                        }
-                    }
-
-                    // reset revision counts in reader
-                    this.revisionCount = 0;
-                    this.minorRevisionCount = 0;
-                    this.pageName = null;
-                    this.redirectTitle = null;
-
-                    if (WikiLoaderProgram.SigintReceived)
-                        this.quitNow = true;
-                    break;
-            }
-
-            if (s.Position >= skipUntilPosition)
-                HandleSkippedEndElement();
-        }
-
-        internal void HandleSkippedEndElement()
+        private void HandleSkippedEndElement()
         {
             switch (this.reader.Name)
             {
@@ -398,7 +398,6 @@ namespace WikiReader
                         else
                             this.contributorMap.Add(this.contributorUserName, 1);
                     }
-
                     break;
             }
         }

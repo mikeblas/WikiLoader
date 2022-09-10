@@ -37,7 +37,7 @@ namespace WikiReader
             if (args.Length >= 1)
                 fileName = args[0];
 
-            WikiLoaderProgram p = new();
+            WikiLoaderProgram p = new ();
             p.Run(fileName);
         }
 
@@ -66,7 +66,7 @@ namespace WikiReader
             FileStream s = File.OpenRead(fileName);
             using XmlReader reader = XmlReader.Create(s, null);
 
-            XmlDumpParser xdp = new(s, reader, this.pump, 0);
+            XmlDumpParser xdp = new (s, reader, this.pump, 188186624);
 
             while (xdp.Read())
             {

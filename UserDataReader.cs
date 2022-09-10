@@ -224,7 +224,8 @@
             }
 
             if (i == 0)
-                return contributors[this.currentUser].ID;
+                return this.contributors[this.currentUser].ID;
+
             throw new NotImplementedException();
         }
 

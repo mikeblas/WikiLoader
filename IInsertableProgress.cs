@@ -1,6 +1,6 @@
 ﻿namespace WikiReader
 {
-    interface IInsertableProgress
+    internal interface IInsertableProgress
     {
         void AddPendingRevisions(int count);
 

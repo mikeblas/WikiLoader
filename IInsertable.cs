@@ -3,10 +3,8 @@
     using System.Data.SqlClient;
     using System.Threading;
 
-    interface IInsertable
+    internal interface IInsertable
     {
-        void Insert(IInsertable? previous, DatabasePump pump, SqlConnection conn, IInsertableProgress progress);
-
         string ObjectName
         {
             get;
@@ -17,6 +15,13 @@
             get;
         }
 
+        int RemainingRevisionCount
+        {
+            get;
+        }
+
         ManualResetEvent GetCompletedEvent();
+
+        void Insert(IInsertable? previous, DatabasePump pump, SqlConnection conn, IInsertableProgress progress);
     }
 }

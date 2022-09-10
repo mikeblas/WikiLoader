@@ -9,7 +9,7 @@ namespace WikiReader
     /// <summary>
     /// Represents a user; contains their name (as a string) and an ID integer.
     /// </summary>
-    class User
+    internal class User
     {
         private readonly string? userName = null;
         private readonly string? ipAddress = null;

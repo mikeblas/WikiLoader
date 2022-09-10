@@ -14,9 +14,9 @@
     /// </summary>
     internal class NamespaceInfo
     {
-        private int pageCount;
         private readonly int namespaceID;
         private readonly string name;
+        private int pageCount;
 
         /// <summary>
         /// Create a new namespace instance.

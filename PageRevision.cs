@@ -8,103 +8,103 @@
     /// https://www.mediawiki.org/wiki/Manual:Revision_table
     ///
     /// </summary>
-    class PageRevision
+    internal class PageRevision
     {
-        private readonly long _parentRevisionId = 0;
-        private readonly long _revisionId = 0;
-        private readonly DateTime _timestamp = DateTime.MinValue;
-        private readonly User? _contributor = null;
-        private readonly string? _comment = null;
-        private readonly bool _minor = false;
-        private readonly bool _commentDeleted = false;
-        private readonly bool _textDeleted = false;
+        private readonly long parentRevisionId = 0;
+        private readonly long revisionId = 0;
+        private readonly DateTime timestamp = DateTime.MinValue;
+        private readonly User? contributor = null;
+        private readonly string? comment = null;
+        private readonly bool minor = false;
+        private readonly bool commentDeleted = false;
+        private readonly bool textDeleted = false;
 
-        private int _textLength = 0;
-        private string? _text = null;
+        private int textLength = 0;
+        private string? text = null;
 
         public PageRevision(long parentRevisionId, long revisionId, DateTime timestamp, User? contributor, string? comment, string? text, bool minor)
         {
-            _parentRevisionId = parentRevisionId;
-            _revisionId = revisionId;
-            _timestamp = timestamp;
-            _contributor = contributor;
-            _comment = comment;
-            _text = text;
-            if (_text == null)
+            this.parentRevisionId = parentRevisionId;
+            this.revisionId = revisionId;
+            this.timestamp = timestamp;
+            this.contributor = contributor;
+            this.comment = comment;
+            this.text = text;
+            if (this.text == null)
             {
-                _textLength = 0;
-                _textDeleted = true;
+                this.textLength = 0;
+                this.textDeleted = true;
             }
             else
             {
-                _textLength = _text.Length;
-                _textDeleted = false;
+                this.textLength = this.text.Length;
+                this.textDeleted = false;
             }
 
-            _minor = minor;
+            this.minor = minor;
         }
 
         public long RevisionId
         {
-            get { return _revisionId; }
+            get { return this.revisionId; }
         }
 
         public long ParentRevisionId
         {
-            get { return _parentRevisionId; }
+            get { return this.parentRevisionId; }
         }
 
         public User? Contributor
         {
-            get { return _contributor; }
+            get { return this.contributor; }
         }
 
         public DateTime TimeStamp
         {
-            get { return _timestamp; }
+            get { return this.timestamp; }
         }
 
         public string? Comment
         {
-            get { return _comment; }
-            // set { _comment = value; }
+            get { return this.comment; }
+            // set { comment = value; }
         }
 
         public bool CommentDeleted
         {
-            get { return _commentDeleted; }
+            get { return this.commentDeleted; }
         }
 
         public bool TextDeleted
         {
-            get { return _textDeleted; }
+            get { return this.textDeleted; }
         }
 
         public string? Text
         {
             get
             {
-                return _text;
+                return this.text;
             }
 
             set
             {
-                _text = value;
-                if (_text != null)
-                    _textLength = _text.Length;
+                this.text = value;
+                if (this.text != null)
+                    this.textLength = this.text.Length;
                 else
-                    _textLength = 0;
+                    this.textLength = 0;
             }
         }
 
         public int TextLength
         {
-            get { return _textLength; }
+            get { return this.textLength; }
         }
 
         public bool IsMinor
         {
-            get { return _minor; }
+            get { return this.minor; }
         }
     }
 }

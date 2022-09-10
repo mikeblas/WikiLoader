@@ -1,6 +1,7 @@
 ﻿namespace WikiReader
 {
     using System;
+    using System.Collections.Generic;
     using System.Data;
     using System.Data.SqlClient;
     using System.Data.SqlTypes;
@@ -13,16 +14,19 @@
     /// and have them insert themselves into the database.
     ///
     /// Kind of coarse right now; it just uses the ThreadPool, which leaves no
-    /// backpressure. It might be interesting to add backpressure as a way to
-    /// limit the load on the target database server, or to govern mmeory
-    /// consumption.
+    /// backpressure, so we implement our own.
     ///
     /// Only one instance can exist because of some shared state in static members.
     /// Need to add some singleton pattern implementation so that it is protected.
     /// </summary>
     internal class DatabasePump : IInsertableProgress
     {
-        private static long previousPendingRevisions = -1;
+        private static long previousPendingRevisionCount = -1;
+
+        private static long runningCount = 0;
+        private static long queuedCount = 0;
+
+        private readonly HashSet<WorkItemInfo> runningSet = new ();
 
         private long runID;
 
@@ -37,53 +41,58 @@
         /// </summary>
         private class WorkItemInfo : IDisposable
         {
-            public IInsertable _i;
-            public IInsertable? _previous;
-            public SqlConnection? _conn;
-            public IInsertableProgress _progress;
-            public DatabasePump _pump;
+            private IInsertable _i;
+            private IInsertable? _previous;
+            private SqlConnection? _conn;
+            private IInsertableProgress _progress;
+            private DatabasePump _pump;
 
             public WorkItemInfo(DatabasePump pump, IInsertable i, IInsertable? previous, IInsertableProgress progress)
             {
-                _pump = pump;
-                _i = i;
-                _previous = previous;
-                _progress = progress;
+                this._pump = pump;
+                this._i = i;
+                this._previous = previous;
+                this._progress = progress;
             }
 
             public void Dispose()
             {
-                if (_conn != null)
+                if (this._conn != null)
                 {
-                    _conn.Close();
-                    _conn.Dispose();
+                    this._conn.Close();
+                    this._conn.Dispose();
                 }
 
-                _conn = null;
+                this._conn = null;
             }
 
-            public void BuildConnection()
+            internal void Insert()
+            {
+                _i.Insert(this._previous, this._pump, this._conn, this._progress);
+            }
+
+            internal bool BuildConnection()
             {
                 // get a new connection; use an ApplicationName parameter to indicate who we are
                 string totalConnectionString = $"{ConnectionString};Application Name=WikiLoader{Environment.CurrentManagedThreadId};";
 
-                _conn = null;
+                this._conn = null;
                 try
                 {
-                    _conn = new SqlConnection(totalConnectionString);
+                    this._conn = new SqlConnection(totalConnectionString);
                 }
                 catch (ArgumentException)
                 {
                     // something wrong, so fall back to a safer string
                     Console.WriteLine($"Connection failed. Connection string = \"{totalConnectionString}\"");
-                    _conn = new SqlConnection(ConnectionString);
+                    this._conn = new SqlConnection(ConnectionString);
                 }
 
                 for (int retries = 10; retries > 0; retries--)
                 {
                     try
                     {
-                        _conn.Open();
+                        this._conn.Open();
                         break;
                     }
                     catch (SqlException sex)
@@ -101,8 +110,22 @@
                     }
                 }
 
-                if (_conn.State != ConnectionState.Open)
-                    throw new Exception("Couldn't connect");
+                return this._conn.State == ConnectionState.Open;
+            }
+
+            internal string ObjectName
+            {
+                get { return this._i.ObjectName; }
+            }
+
+            internal int RevisionCount
+            {
+                get { return this._i.RevisionCount; }
+            }
+
+            internal int RemainingRevisionCount
+            {
+                get { return this._i.RemainingRevisionCount; }
             }
         }
 
@@ -252,21 +275,31 @@
         {
             // backpressure
             int pauses = 0;
-            while (Interlocked.Read(ref _running) >= 5 || Interlocked.Read(ref _queued) >= 100)
+            while (Interlocked.Read(ref runningCount) >= 5 || Interlocked.Read(ref queuedCount) >= 100)
             {
                 // report every 10 pauses == 1 second
                 if (pauses++ % 10 == 0)
                 {
-                    string main = $"Backpressure: {Interlocked.Read(ref _running)} running, {Interlocked.Read(ref _queued)} queued, {this._pendingRevisions} pending revisions";
-                    if (previousPendingRevisions != -1)
+                    string main = $"Backpressure: {Interlocked.Read(ref runningCount)} running, {Interlocked.Read(ref queuedCount)} queued, {this._pendingRevisions} pending revisions";
+                    if (previousPendingRevisionCount != -1)
                     {
-                        long delta = this._pendingRevisions - previousPendingRevisions;
-                        Console.WriteLine($"{main} ({delta:+#;-#;0})");
+                        long delta = this._pendingRevisions - previousPendingRevisionCount;
+                        main = $"{main} ({delta:+#;-#;0})";
                     }
-                    else
-                        Console.WriteLine(main);
 
-                    previousPendingRevisions = this._pendingRevisions;
+                    main += "\n";
+
+                    lock (this.runningSet)
+                    {
+                        foreach (var wii in this.runningSet)
+                        {
+                            main += $"   {wii.ObjectName}, {wii.RemainingRevisionCount} / {wii.RevisionCount}\n";
+                        }
+                    }
+
+                    Console.Write(main);
+
+                    previousPendingRevisionCount = this._pendingRevisions;
                 }
 
                 Thread.Sleep(100);  // 100 milliseconds
@@ -274,60 +307,67 @@
 
             // create a WorkItemInfo instance with the Insertable and our connection
             // disposable connection object is now owned by WorkItemInfo object
-            WorkItemInfo ci = new(this, i, previous, this);
+            WorkItemInfo ci = new (this, i, previous, this);
 
             // queue it up!
-            Interlocked.Increment(ref _queued);
-            ThreadPool.QueueUserWorkItem(new WaitCallback(WorkCallback), ci);
+            Interlocked.Increment(ref queuedCount);
+            ThreadPool.QueueUserWorkItem(new WaitCallback(this.WorkCallback), ci);
 
             // return our current running count. This might
             // not have incremented just yet, but this is a convenient
             // time to help show status
-            return (_running, _queued, _pendingRevisions);
+            return (runningCount, queuedCount, this._pendingRevisions);
         }
-
-        private static long _running = 0;
-        private static long _queued = 0;
 
         /// <summary>
         /// Callback for the thread to do work. Does some
         /// accounting, and then makes the call.
         /// </summary>
-        /// <param name="obj">WorkItemInfo object to work</param>
-        private static void WorkCallback(object? obj)
+        /// <param name="obj">WorkItemInfo object to work.</param>
+        private void WorkCallback(object? obj)
         {
             if (obj == null)
                 throw new InvalidOperationException("thread work item can't be null");
 
             // cast the generic object to our WorkItemInfo
-            using WorkItemInfo ci = (WorkItemInfo)obj;
+            using WorkItemInfo wii = (WorkItemInfo)obj;
 
             // remove from the queued count
-            Interlocked.Decrement(ref _queued);
+            Interlocked.Decrement(ref queuedCount);
 
             // add to the running count
-            Interlocked.Increment(ref _running);
+            Interlocked.Increment(ref runningCount);
+
+            lock (this.runningSet)
+            {
+                this.runningSet.Add(wii);
+            }
 
             try
             {
                 // go work the insertion
-                ci.BuildConnection();
-                if (ci._conn == null)
+                if (!wii.BuildConnection())
                     throw new Exception("Couldn't connect");
-                ci._i.Insert(ci._previous, ci._pump, ci._conn, ci._progress);
+                wii.Insert();
             }
             finally
             {
                 // decrement our running count
-                Interlocked.Decrement(ref _running);
+                Interlocked.Decrement(ref runningCount);
+
+                // remove from the set of running
+                lock (this.runningSet)
+                {
+                    this.runningSet.Remove(wii);
+                 }
             }
         }
 
         public void WaitForComplete()
         {
-            while (_running > 0)
+            while (runningCount > 0)
             {
-                Console.WriteLine($"{_running} still running, {_queued} queued, {_pendingRevisions} pending revisions");
+                Console.WriteLine($"{runningCount} still running, {queuedCount} queued, {this._pendingRevisions} pending revisions");
                 Thread.Sleep(1000);
             }
 
@@ -336,7 +376,7 @@
 
         public int InsertedPages()
         {
-            return _insertedPages;
+            return this._insertedPages;
         }
 
         /// <summary>
@@ -349,29 +389,28 @@
 
         public void AddPendingRevisions(int count)
         {
-            Interlocked.Add(ref _pendingRevisions, count);
+            Interlocked.Add(ref this._pendingRevisions, count);
         }
 
         public void CompleteRevisions(int count)
         {
-            Interlocked.Add(ref _pendingRevisions, -count);
+            Interlocked.Add(ref this._pendingRevisions, -count);
         }
 
 
         public void InsertedPages(int count)
         {
-            Interlocked.Add(ref _insertedPages, count);
+            Interlocked.Add(ref this._insertedPages, count);
         }
 
         public void InsertedUsers(int count)
         {
-            Interlocked.Add(ref _insertedUsers, count);
+            Interlocked.Add(ref this._insertedUsers, count);
         }
 
         public void InsertedRevisions(int count)
         {
-            Interlocked.Add(ref _insertedRevisions, count);
+            Interlocked.Add(ref this._insertedRevisions, count);
         }
     }
 }
-

@@ -48,7 +48,7 @@
                     }
                 }
 
-                current = value;
+                this.current = value;
             }
         }
 

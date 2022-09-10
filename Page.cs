@@ -12,7 +12,7 @@
     /// and the pageID. It contains a list of zero or more revisions of the page,
     /// each an instance of the PageRevision class.
     /// </summary>
-    class Page : IInsertable
+    internal class Page : IInsertable
     {
         /// <summary>
         /// Name of the page we represent.
@@ -39,32 +39,30 @@
 
         private readonly ManualResetEvent completeEvent = new(false);
 
-        public ManualResetEvent GetCompletedEvent()
-        {
-            return completeEvent;
-        }
+        private int usersAdded = 0;
+        private int usersAlready = 0;
+        private int revsAdded = 0;
+        private int revsAlready = 0;
 
         /// <summary>
         /// set indicating which users we've already inserted
         /// </summary>
-        static readonly HashSet<long> insertedUserSet = new ();
+        private static readonly HashSet<long> insertedUserSet = new ();
 
         /// <summary>
         /// Map of revisions from RevisionID to the PageRevision at that ID
         /// </summary>
         private readonly SortedList<long, PageRevision> revisions = new ();
 
-        private int _usersAdded = 0;
-        private int _usersAlready = 0;
-        private int _revsAdded = 0;
-        private int _revsAlready = 0;
-
         /// <summary>
         /// Initializes a new instance of the <see cref="Page"/> class.
         /// </summary>
-        /// <param name="namespaceId">namespaceId where this page lives</param>
-        /// <param name="pageId">pageID for this page</param>
-        /// <param name="pageName">name of this page</param>
+        /// <param name="namespaceId">namespaceId where this page lives.</param>
+        /// <param name="pageId">pageID for this page.</param>
+        /// <param name="pageName">name of this page.</param>
+        /// <param name="redirectName">name of page this redirscts to, null if not a redirect.</param>
+        /// <param name="runId">RunID we're working.</param>
+        /// <param name="filePosition">position of file to start working (0 if entire file).</param>
         public Page(int namespaceId, long pageId, string pageName, string? redirectName, long runId, long filePosition)
         {
             this.namespaceId = namespaceId;
@@ -73,6 +71,11 @@
             this.redirectTitle = redirectName;
             this.runId = runId;
             this.filePosition = filePosition;
+        }
+
+        public ManualResetEvent GetCompletedEvent()
+        {
+            return this.completeEvent;
         }
 
         /// <summary>
@@ -109,7 +112,7 @@
         /// <param name="progress">InsertableProgress interface for progress callbacks</param>
         public void Insert(IInsertable? previous, DatabasePump pump, SqlConnection conn, IInsertableProgress progress)
         {
-            progress.AddPendingRevisions(revisions.Count);
+            progress.AddPendingRevisions(this.revisions.Count);
 
             // first, insert all the users
             this.BulkInsertUsers(pump, conn);
@@ -125,10 +128,10 @@
 
             Console.WriteLine(
                 $"[[{this.pageName}]]\n" +
-                $"   {this._revsAdded} revisions added, {this._revsAlready} revisions exist\n" +
-                $"   {this._usersAdded} users added, {this._usersAlready} users exist");
+                $"   {this.revsAdded} revisions added, {this.revsAlready} revisions exist\n" +
+                $"   {this.usersAdded} users added, {this.usersAlready} users exist");
 
-            UpdateProgress(conn);
+            this.UpdateProgress(conn);
         }
 
         private void UpdateProgress(SqlConnection conn)
@@ -136,7 +139,7 @@
             // try to insert first
 
             using var insertCommand = new SqlCommand(
-                "WITH X AS (" + 
+                "WITH X AS (" +
                 "    SELECT * FROM (VALUES (@RunID, GETUTCDATE(), @FilePosition, @PageID)) AS X(RunID, ReportTime, FilePosition, PageID) " +
                 ") " +
                 "INSERT RunProgress (RunID, ReportTime, FilePosition, PageID) " +
@@ -190,8 +193,8 @@
             try
             {
                 // bulk insert into the temporary table
-                UserDataReader udr = new(insertedUserSet, this.revisions.Values);
-                SqlBulkCopy sbc = new(conn);
+                UserDataReader udr = new (insertedUserSet, this.revisions.Values);
+                SqlBulkCopy sbc = new (conn);
 
                 bulkActivity = pump.StartActivity("Bulk Insert Users", this.namespaceId, this.pageId, udr.Count);
 
@@ -218,8 +221,8 @@
                             "WHEN NOT MATCHED THEN " +
                             " INSERT (UserID, UserName) VALUES (SRC.UserID, SRC.UserName);", conn);
                         tableMerge.CommandTimeout = 300;
-                        this._usersAdded = tableMerge.ExecuteNonQuery();
-                        this._usersAlready = udr.Count - this._usersAdded;
+                        this.usersAdded = tableMerge.ExecuteNonQuery();
+                        this.usersAlready = udr.Count - this.usersAdded;
                         mergeException = null;
                         break;
                     }
@@ -252,7 +255,7 @@
                     }
                     finally
                     {
-                        pump.CompleteActivity(mergeActivity, this._usersAdded, mergeException?.Message);
+                        pump.CompleteActivity(mergeActivity, this.usersAdded, mergeException?.Message);
                     }
 
                 }
@@ -286,7 +289,7 @@
         private void BulkInsertRevisionText(DatabasePump pump, SqlConnection conn)
         {
             // build our data reader first
-            PageRevisionTextDataReader prtdr = new(this.namespaceId, this.pageId, this.revisions.Values);
+            PageRevisionTextDataReader prtdr = new (this.namespaceId, this.pageId, this.revisions.Values);
 
             long bulkActivity = pump.StartActivity("Bulk Insert Text", this.namespaceId, this.pageId, prtdr.Count);
 
@@ -341,8 +344,8 @@
                             "  AND [PageRevisionText].PageRevisionID = SRC.PageRevisionID " +
                             "WHEN NOT MATCHED THEN " +
                             "INSERT (NamespaceID, PageID, PageRevisionID, ArticleText) VALUES (SRC.NamespaceID, SRC.PageID, SRC.PageRevisionID, SRC.ArticleText);", conn);
-                        this._usersAdded = tableMerge.ExecuteNonQuery();
-                        this._usersAlready = prtdr.Count - this._usersAdded;
+                        this.usersAdded = tableMerge.ExecuteNonQuery();
+                        this.usersAlready = prtdr.Count - this.usersAdded;
                         mergeException = null;
                         break;
                     }
@@ -375,7 +378,7 @@
                     }
                     finally
                     {
-                        pump.CompleteActivity(mergeActivity, _usersAdded, mergeException?.Message);
+                        pump.CompleteActivity(mergeActivity, this.usersAdded, mergeException?.Message);
                     }
 
                 }
@@ -407,7 +410,7 @@
             long checkActivityID = pump.StartActivity("Check existing PageRevisions", null, this.pageId, this.revisions.Count);
 
             // build a hash set of all the known revisions of this page
-            HashSet<long> knownRevisions = new();
+            HashSet<long> knownRevisions = new ();
 
             using var cmdSelect = new SqlCommand("select PageRevisionID FROM PageRevision WHERE PageID = @PageID", conn);
             cmdSelect.Parameters.AddWithValue("@NamespaceID", this.namespaceId);
@@ -420,14 +423,14 @@
                     knownRevisions.Add((long)reader["PageRevisionID"]);
             }
 
-            SortedList<long, PageRevision> neededRevisions = new();
+            SortedList<long, PageRevision> neededRevisions = new ();
 
             foreach ((long revID, var rev) in this.revisions)
             {
                 if (knownRevisions.Contains(revID))
                 {
                     progress.CompleteRevisions(1);
-                    this._revsAlready += 1;
+                    this.revsAlready += 1;
                     continue;
                 }
 
@@ -453,7 +456,7 @@
                     bulkActivityID = pump.StartActivity("Bulk Insert PageRevisions", this.namespaceId, this.pageId, neededRevisions.Count);
 
                     // bulk insert into the temporary table
-                    PageRevisionDataReader prdr = new(this.namespaceId, this.pageId, neededRevisions.Values);
+                    PageRevisionDataReader prdr = new (this.namespaceId, this.pageId, neededRevisions.Values);
                     var sbc = new SqlBulkCopy(conn);
                     sbc.BulkCopyTimeout = 3600;
 
@@ -480,7 +483,7 @@
                     bulkActivityID = -1;
 
                     progress.CompleteRevisions(neededRevisions.Count);
-                    this._revsAdded += neededRevisions.Count;
+                    this.revsAdded += neededRevisions.Count;
                 }
 
                 // wait until the previous revision is done, if we've got one
@@ -537,9 +540,10 @@
 
             long bulkActivityID = -1;
 
-            try {
+            try
+            {
                 // bulk insert into the temporary table
-                PageRevisionDataReader prdr = new(this.namespaceId, this.pageId, this.revisions.Values);
+                PageRevisionDataReader prdr = new (this.namespaceId, this.pageId, this.revisions.Values);
                 var sbc = new SqlBulkCopy(conn);
 
                 bulkActivityID = pump.StartActivity("Bulk Insert PageRevisions", this.namespaceId, this.pageId, prdr.Count);
@@ -595,8 +599,8 @@
                             "	     SRC.TextAvailable, SRC.IsMinor, SRC.ArticleTextLength, SRC.TextDeleted, SRC.UserDeleted);",
                             conn);
                         tableMerge.CommandTimeout = 3600;
-                        this._revsAdded = tableMerge.ExecuteNonQuery();
-                        this._revsAlready = prdr.Count - this._revsAdded;
+                        this.revsAdded = tableMerge.ExecuteNonQuery();
+                        this.revsAlready = prdr.Count - this.revsAdded;
                         mergeException = null;
                         progress.CompleteRevisions(prdr.Count);
                         break;
@@ -630,7 +634,7 @@
                     }
                     finally
                     {
-                        pump.CompleteActivity(mergeActivity, this._revsAdded, mergeException?.Message);
+                        pump.CompleteActivity(mergeActivity, this.revsAdded, mergeException?.Message);
                     }
                 }
 
@@ -731,6 +735,10 @@
         {
             get { return this.revisions.Count; }
         }
-    }
 
+        int IInsertable.RemainingRevisionCount
+        {
+            get { return this.revisions.Count - this.revsAlready; }
+        }
+    }
 }

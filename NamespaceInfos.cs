@@ -14,7 +14,7 @@
     /// aren't persisted; these are used to show statistics for a run of
     /// the loader.
     /// </summary>
-    class NamespaceInfos : IInsertable
+    internal class NamespaceInfos : IInsertable
     {
         /// <summary>
         /// map of namespace IDs (as integers) to NamespaceInfo objects
@@ -133,6 +133,11 @@
         }
 
         int IInsertable.RevisionCount
+        {
+            get { return this.namespaceMap.Count; }
+        }
+
+        int IInsertable.RemainingRevisionCount
         {
             get { return 0; }
         }

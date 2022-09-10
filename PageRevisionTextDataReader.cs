@@ -4,10 +4,10 @@
     using System.Collections.Generic;
     using System.Data;
 
-    class PageRevisionTextDataReader : IDataReader
+    internal class PageRevisionTextDataReader : IDataReader
     {
         // list of PageRevisions this reader will supply
-        readonly List<PageRevision> _revisions = new();
+        readonly List<PageRevision> _revisions = new ();
 
         /// <summary>
         /// What revision would be next read?
