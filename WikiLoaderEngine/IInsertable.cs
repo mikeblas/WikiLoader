@@ -1,9 +1,9 @@
-﻿namespace WikiLoader
+﻿namespace WikiLoaderEngine
 {
     using System.Data.SqlClient;
     using System.Threading;
 
-    internal interface IInsertable
+    public interface IInsertable
     {
         string ObjectName
         {

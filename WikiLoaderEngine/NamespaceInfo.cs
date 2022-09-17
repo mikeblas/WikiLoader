@@ -1,4 +1,4 @@
-﻿namespace WikiLoader
+﻿namespace WikiLoaderEngine
 {
     using System;
     using System.Collections.Generic;
@@ -12,7 +12,7 @@
     /// Includes the name and ID of the namespace. Also manages a count
     /// which is used to tally the number of articles read per namespace.
     /// </summary>
-    internal class NamespaceInfo
+    public class NamespaceInfo
     {
         private readonly int namespaceID;
         private readonly string name;

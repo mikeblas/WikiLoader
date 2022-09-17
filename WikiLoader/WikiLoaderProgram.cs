@@ -8,6 +8,8 @@ namespace WikiLoader
     using System.Reflection.PortableExecutable;
     using System.Xml;
 
+    using WikiLoaderEngine;
+
     internal class WikiLoaderProgram : IXmlDumpParserProgress
     {
         internal static bool SigintReceived = false;
@@ -88,8 +90,8 @@ namespace WikiLoader
             Console.WriteLine($"{xdp.TotalMinorRevisions} total minor revisions");
             Console.WriteLine($"{xdp.ContributorCount} distinct contributors");
 
-            Console.WriteLine($"Longest comment is {xdp.Comment.LargestLength}: {xdp.Comment.Largest}");
-            Console.WriteLine($"Longest text is {xdp.ArticleText.LargestLength}");
+            Console.WriteLine($"Longest comment is {xdp.LargestCommentLength}: {xdp.LargestComment}");
+            Console.WriteLine($"Longest text is {xdp.LargestArticleTextLength}");
 
             foreach (NamespaceInfo ns in xdp.NamespaceMap.Values)
                 Console.WriteLine($"{ns.PageCount},{ns.Name}");

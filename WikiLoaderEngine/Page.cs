@@ -1,4 +1,4 @@
-﻿namespace WikiLoader
+﻿namespace WikiLoaderEngine
 {
     using System;
     using System.Collections.Generic;

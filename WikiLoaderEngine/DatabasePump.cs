@@ -1,4 +1,4 @@
-﻿namespace WikiLoader
+﻿namespace WikiLoaderEngine
 {
     using System;
     using System.Collections.Generic;
@@ -19,7 +19,7 @@
     /// Only one instance can exist because of some shared state in static members.
     /// Need to add some singleton pattern implementation so that it is protected.
     /// </summary>
-    internal class DatabasePump : IInsertableProgress
+    public class DatabasePump : IInsertableProgress
     {
         private static long previousPendingRevisionCount = -1;
 

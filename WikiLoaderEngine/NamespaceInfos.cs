@@ -1,4 +1,4 @@
-﻿namespace WikiLoader
+﻿namespace WikiLoaderEngine
 {
     using System;
     using System.Collections.Generic;
@@ -14,7 +14,7 @@
     /// aren't persisted; these are used to show statistics for a run of
     /// the loader.
     /// </summary>
-    internal class NamespaceInfos : IInsertable
+    public class NamespaceInfos : IInsertable
     {
         /// <summary>
         /// map of namespace IDs (as integers) to NamespaceInfo objects

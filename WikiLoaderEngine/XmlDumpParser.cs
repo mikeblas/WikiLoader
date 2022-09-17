@@ -1,6 +1,6 @@
 ﻿// https://en.wikipedia.org/wiki/Wikipedia:Database_download#XML_schema
 
-namespace WikiLoader
+namespace WikiLoaderEngine
 {
     using System;
     using System.Collections.Generic;
@@ -8,7 +8,7 @@ namespace WikiLoader
     using System.IO;
     using System.Xml;
 
-    internal class XmlDumpParser
+    public class XmlDumpParser
     {
         // dictionary from string of user name to user ID
         private readonly Dictionary<string, int> contributorMap = new ();
@@ -61,7 +61,7 @@ namespace WikiLoader
         private XmlReader reader;
         private DatabasePump pump;
 
-        internal XmlDumpParser(FileStream s, XmlReader reader, DatabasePump pump, long skipUntilPosition, IXmlDumpParserProgress parserProgress)
+        public XmlDumpParser(FileStream s, XmlReader reader, DatabasePump pump, long skipUntilPosition, IXmlDumpParserProgress parserProgress)
         {
             this.s = s;
             this.parserProgress = parserProgress;
@@ -70,39 +70,49 @@ namespace WikiLoader
             this.skipUntilPosition = skipUntilPosition;
         }
 
-        internal NamespaceInfos NamespaceMap
+        public NamespaceInfos NamespaceMap
         {
             get { return this.namespaceMap; }
         }
 
-        internal int TotalMinorRevisions
+        public void Interrupt()
+        {
+            this.quitNow = true;
+        }
+
+        public int TotalMinorRevisions
         {
             get { return this.totalMinorRevisions;  }
         }
 
-        internal LargestString Comment
+        public int LargestCommentLength
         {
-            get { return this.comment; }
+            get { return this.comment.LargestLength; }
         }
 
-        internal int ContributorCount
+        public string? LargestComment
+        {
+            get { return this.comment.Largest; }
+        }
+
+        public int ContributorCount
         {
             get { return this.contributorMap.Count; }
         }
 
-        internal int TotalPages
+        public int TotalPages
         {
             get { return this.totalPages; }
         }
 
-        internal int TotalRevisions
+        public int TotalRevisions
         {
             get { return this.totalRevisions; }
         }
 
-        internal LargestString ArticleText
+        public int LargestArticleTextLength
         {
-            get { return this.articleText;  }
+            get { return this.articleText.LargestLength;  }
         }
 
         internal void HandleStartElement()
@@ -184,8 +194,6 @@ namespace WikiLoader
                     this.pageName = null;
                     this.redirectTitle = null;
 
-                    if (WikiLoaderProgram.SigintReceived)
-                        this.quitNow = true;
                     break;
             }
 
@@ -400,7 +408,7 @@ namespace WikiLoader
             }
         }
 
-        internal bool Read()
+        public bool Read()
         {
             if (quitNow)
                 return false;
@@ -408,7 +416,7 @@ namespace WikiLoader
             return reader.Read();
         }
 
-        internal void Work()
+        public void Work()
         {
             if (this.reader.IsStartElement())
             {

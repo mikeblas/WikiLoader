@@ -1,6 +1,6 @@
-﻿namespace WikiLoader
+﻿namespace WikiLoaderEngine
 {
-    internal interface IInsertableProgress
+    public interface IInsertableProgress
     {
         void AddPendingRevisions(int count);
 

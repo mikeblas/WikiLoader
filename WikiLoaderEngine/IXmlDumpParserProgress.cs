@@ -1,6 +1,6 @@
-﻿namespace WikiLoader
+﻿namespace WikiLoaderEngine
 {
-    internal interface IXmlDumpParserProgress
+    public interface IXmlDumpParserProgress
     {
         /// <summary>
         /// Called when progress has been made through the bytes of the file.
