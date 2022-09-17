@@ -1,4 +1,4 @@
-﻿namespace WikiReader
+﻿namespace WikiLoader
 {
     using System;
     using System.Collections.Generic;
@@ -77,7 +77,7 @@
         /// Takes a SqlConnection and inserts the collection into it.
         /// </summary>
         /// <param name="conn">SqlConnection to write into</param>
-        public void Insert(IInsertable? previous, DatabasePump pump, SqlConnection conn, IInsertableProgress progress)
+        public void Insert(IInsertable? previous, DatabasePump pump, SqlConnection conn, IInsertableProgress progress, IXmlDumpParserProgress parserProgress)
         {
             // count of rows actually inserted
             int inserts = 0;

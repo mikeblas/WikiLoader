@@ -1,4 +1,4 @@
-﻿namespace WikiReader
+﻿namespace WikiLoader
 {
     internal interface IInsertableProgress
     {

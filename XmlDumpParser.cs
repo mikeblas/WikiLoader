@@ -1,6 +1,6 @@
 ﻿// https://en.wikipedia.org/wiki/Wikipedia:Database_download#XML_schema
 
-namespace WikiReader
+namespace WikiLoader
 {
     using System;
     using System.Collections.Generic;
@@ -19,6 +19,9 @@ namespace WikiReader
 
         // dictionary from namespace ID to namespace string
         private readonly NamespaceInfos namespaceMap = new ();
+
+        // progress interface to explain what we're doing
+        private readonly IXmlDumpParserProgress parserProgress;
 
         private string? pageName = null;
         private string? redirectTitle = null;
@@ -58,9 +61,10 @@ namespace WikiReader
         private XmlReader reader;
         private DatabasePump pump;
 
-        internal XmlDumpParser(FileStream s, XmlReader reader, DatabasePump pump, long skipUntilPosition)
+        internal XmlDumpParser(FileStream s, XmlReader reader, DatabasePump pump, long skipUntilPosition, IXmlDumpParserProgress parserProgress)
         {
             this.s = s;
+            this.parserProgress = parserProgress;
             this.reader = reader;
             this.pump = pump;
             this.skipUntilPosition = skipUntilPosition;
@@ -135,16 +139,12 @@ namespace WikiReader
 
                     if (s.Position < skipUntilPosition)
                     {
-                        Console.WriteLine(
-                            $"{s.Position} / {s.Length}: {(s.Position * 100.0) / s.Length:##0.0000}\n" +
-                            "   Skipped");
+                        parserProgress.FileProgress(s.Position, s.Length, true);
                         this.sawPageBegin = false;
                     }
                     else if (!sawPageBegin)
                     {
-                        Console.WriteLine(
-                            $"{s.Position} / {s.Length}: {(s.Position * 100.0) / s.Length:##0.0000}\n" +
-                            "   Incompletely read");
+                        parserProgress.FileProgress(s.Position, s.Length, true);
                         this.sawPageBegin = false;
                     }
                     else
@@ -154,15 +154,20 @@ namespace WikiReader
                         Page page = pageMap[pageName];
                         pageMap.Remove(pageName);
 
-                        (long running, long queued, long pendingRevisions) = this.pump.Enqueue(page, previousPage);
+                        // push the activity in
+                        if (currentActivity != -1)
+                        {
+                            pump.CompleteActivity(currentActivity, revisionCount, null);
+                            currentActivity = -1;
+                        }
+
+                        // (long running, long queued, long pendingRevisions) = this.pump.Enqueue(page, previousPage);
+                        (long running, long queued, long pendingRevisions) = this.pump.Enqueue(page, null, parserProgress);
 
                         previousPage = page;
 
                         // write some stats
-                        Console.WriteLine(
-                            $"{s.Position} / {s.Length}: {(s.Position * 100.0) / s.Length:##0.0000}\n" +
-                            $"   Queued [[{pageName}]]: {revisionCount} revisions, {minorRevisionCount} minor revisions\n" +
-                            $"   {running} running, {queued} queued, {pendingRevisions} pending revisions");
+                        parserProgress.FileProgress(s.Position, s.Length, false);
 
                         // tally our stats
                         totalRevisions += revisionCount;
@@ -171,13 +176,6 @@ namespace WikiReader
 
                         // per namespace inserts
                         namespaceMap[namespaceId].IncrementCount();
-
-                        // push the activity in
-                        if (currentActivity != -1)
-                        {
-                            pump.CompleteActivity(currentActivity, revisionCount, null);
-                            currentActivity = -1;
-                        }
                     }
 
                     // reset revision counts in reader

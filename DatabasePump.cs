@@ -1,4 +1,4 @@
-﻿namespace WikiReader
+﻿namespace WikiLoader
 {
     using System;
     using System.Collections.Generic;
@@ -41,18 +41,20 @@
         /// </summary>
         private class WorkItemInfo : IDisposable
         {
-            private IInsertable _i;
+            private IInsertable insertable;
             private IInsertable? _previous;
             private SqlConnection? _conn;
             private IInsertableProgress _progress;
             private DatabasePump _pump;
+            private IXmlDumpParserProgress parserProgress;
 
-            public WorkItemInfo(DatabasePump pump, IInsertable i, IInsertable? previous, IInsertableProgress progress)
+            public WorkItemInfo(DatabasePump pump, IInsertable i, IInsertable? previous, IInsertableProgress progress, IXmlDumpParserProgress parserProgress)
             {
                 this._pump = pump;
-                this._i = i;
+                this.insertable = i;
                 this._previous = previous;
                 this._progress = progress;
+                this.parserProgress = parserProgress;
             }
 
             public void Dispose()
@@ -68,7 +70,7 @@
 
             internal void Insert()
             {
-                _i.Insert(this._previous, this._pump, this._conn, this._progress);
+                insertable.Insert(this._previous, this._pump, this._conn, this._progress, this.parserProgress);
             }
 
             internal bool BuildConnection()
@@ -115,17 +117,17 @@
 
             internal string ObjectName
             {
-                get { return this._i.ObjectName; }
+                get { return this.insertable.ObjectName; }
             }
 
             internal int RevisionCount
             {
-                get { return this._i.RevisionCount; }
+                get { return this.insertable.RevisionCount; }
             }
 
             internal int RemainingRevisionCount
             {
-                get { return this._i.RemainingRevisionCount; }
+                get { return this.insertable.RemainingRevisionCount; }
             }
         }
 
@@ -166,6 +168,66 @@
             var sql = new SqlConnection(ConnectionString);
             sql.Open();
             return sql;
+        }
+
+        public long DetermineSkipPosition(string filename)
+        {
+            using var conn = GetConnection();
+
+            using var selectRun = new SqlCommand(
+                "  SELECT TOP 1 RunID, EndTime, Result " +
+                "    FROM [Run] " +
+                "   WHERE SourceFileName = @SourceFileName " +
+                "     AND RunID != @ThisRunID " +
+                "ORDER BY StartTime DESC", conn);
+
+            selectRun.Parameters.AddWithValue("@SourceFileName", filename);
+            selectRun.Parameters.AddWithValue("@ThisRunID", this.runID);
+
+            long previousRunID;
+            using (var reader = selectRun.ExecuteReader())
+            {
+                if (!reader.Read())
+                {
+                    // no record, so never did this file before.
+                    return 0;
+                }
+
+                string? result = null;
+                if (reader["Result"] != DBNull.Value)
+                    result = (string)reader["Result"];
+
+                if (result != null && result.StartsWith("Success"))
+                {
+                    // it's there, but it ended
+                    throw new InvalidExpressionException($"Already ran file {filename} to completion at {reader["EndTime"]}");
+                }
+
+                // it didn't finish; get the RunID
+                previousRunID = (long)reader["RunID"];
+            }
+
+            // with the RunID, query the progress
+
+            using var selectProgress = new SqlCommand(
+                "SELECT FilePosition, ReportTime from RunProgress WHERE RunID = @RunID", conn);
+            selectProgress.Parameters.AddWithValue("@RunID", previousRunID);
+
+            using (var reader = selectProgress.ExecuteReader())
+            {
+                if (!reader.Read())
+                {
+                    // wierd there's no record, but our only choice is to start over
+                    Console.WriteLine($"No progress found for previous run {previousRunID}");
+                    return 0;
+                }
+
+                long position = (long)reader["FilePosition"];
+                DateTime reportTime = (DateTime)reader["ReportTime"];
+                Console.WriteLine($"Found progress to byte {position} at {reportTime}");
+
+                return position;
+            }
         }
 
         public void StartRun(string fileName)
@@ -233,6 +295,12 @@
             return activityID;
         }
 
+        /// <summary>
+        /// Mark an activity as complete in the Activity table.
+        /// </summary>
+        /// <param name="activityID">ID of the previously created activity to complete.</param>
+        /// <param name="completedCount">Number of work items completed; null if not countable.</param>
+        /// <param name="result">Error encountered; null if none.</param>
         public void CompleteActivity(long activityID, long? completedCount, string? result)
         {
             using var conn = GetConnection();
@@ -241,7 +309,7 @@
                 "UPDATE Activity " +
                 "   SET EndTime = GetUTCDate(), " +
                 "       CompletedCount = @CompletedCount, " +
-                "       Result = @Result, " +
+                "       Result = @Error, " +
                 "       DurationMillis = DATEDIFF(MILLISECOND, StartTime, GetUTCDate() ) " +
                 " WHERE ActivityID = @ActivityID AND RunID = @RunID;", conn);
 
@@ -252,12 +320,12 @@
 
             if (result == null)
             {
-                completeActivity.Parameters.AddWithValue("@Result", DBNull.Value);
+                completeActivity.Parameters.AddWithValue("@Error", DBNull.Value);
             }
             else
             {
                 string str = result[..Math.Min(result.Length, 1024)];
-                completeActivity.Parameters.AddWithValue("@Result", str);
+                completeActivity.Parameters.AddWithValue("@Error", str);
             }
 
             completeActivity.ExecuteNonQuery();
@@ -271,7 +339,7 @@
         /// <param name="i">reference to an object implementing IInsertable; we'll enqueue it and add it whne we have threads.</param>
         /// <param name="previous">reference to an object using IInsertable for the previously executed item.</param>
         /// <returns>a tuple with the number of running, queued, and pending revisions</returns>
-        public (long running, long queued, long pendingRevisions) Enqueue(IInsertable i, IInsertable? previous)
+        public (long running, long queued, long pendingRevisions) Enqueue(IInsertable i, IInsertable? previous, IXmlDumpParserProgress parserProgress)
         {
             // backpressure
             int pauses = 0;
@@ -280,10 +348,10 @@
                 // report every 10 pauses == 1 second
                 if (pauses++ % 10 == 0)
                 {
-                    string main = $"Backpressure: {Interlocked.Read(ref runningCount)} running, {Interlocked.Read(ref queuedCount)} queued, {this._pendingRevisions} pending revisions";
+                    string main = $"Backpressure: {Interlocked.Read(ref runningCount)} running, {Interlocked.Read(ref queuedCount)} queued, {this.pendingRevisions} pending revisions";
                     if (previousPendingRevisionCount != -1)
                     {
-                        long delta = this._pendingRevisions - previousPendingRevisionCount;
+                        long delta = this.pendingRevisions - previousPendingRevisionCount;
                         main = $"{main} ({delta:+#;-#;0})";
                     }
 
@@ -299,7 +367,7 @@
 
                     Console.Write(main);
 
-                    previousPendingRevisionCount = this._pendingRevisions;
+                    previousPendingRevisionCount = this.pendingRevisions;
                 }
 
                 Thread.Sleep(100);  // 100 milliseconds
@@ -307,7 +375,7 @@
 
             // create a WorkItemInfo instance with the Insertable and our connection
             // disposable connection object is now owned by WorkItemInfo object
-            WorkItemInfo ci = new (this, i, previous, this);
+            WorkItemInfo ci = new (this, i, previous, this, parserProgress);
 
             // queue it up!
             Interlocked.Increment(ref queuedCount);
@@ -316,7 +384,7 @@
             // return our current running count. This might
             // not have incremented just yet, but this is a convenient
             // time to help show status
-            return (runningCount, queuedCount, this._pendingRevisions);
+            return (runningCount, queuedCount, this.pendingRevisions);
         }
 
         /// <summary>
@@ -367,7 +435,7 @@
         {
             while (runningCount > 0)
             {
-                Console.WriteLine($"{runningCount} still running, {queuedCount} queued, {this._pendingRevisions} pending revisions");
+                Console.WriteLine($"{runningCount} still running, {queuedCount} queued, {this.pendingRevisions} pending revisions");
                 Thread.Sleep(1000);
             }
 
@@ -376,41 +444,41 @@
 
         public int InsertedPages()
         {
-            return this._insertedPages;
+            return this.insertedPages;
         }
 
         /// <summary>
-        /// implementation of InsertableProgress.
+        /// implementation of IInsertableProgress.
         /// </summary>
-        private int _pendingRevisions = 0;
-        private int _insertedPages = 0;
-        private int _insertedUsers = 0;
-        private int _insertedRevisions = 0;
+        private int pendingRevisions = 0;
+        private int insertedPages = 0;
+        private int insertedUsers = 0;
+        private int insertedRevisions = 0;
 
         public void AddPendingRevisions(int count)
         {
-            Interlocked.Add(ref this._pendingRevisions, count);
+            Interlocked.Add(ref this.pendingRevisions, count);
         }
 
         public void CompleteRevisions(int count)
         {
-            Interlocked.Add(ref this._pendingRevisions, -count);
+            Interlocked.Add(ref this.pendingRevisions, -count);
         }
 
 
         public void InsertedPages(int count)
         {
-            Interlocked.Add(ref this._insertedPages, count);
+            Interlocked.Add(ref this.insertedPages, count);
         }
 
         public void InsertedUsers(int count)
         {
-            Interlocked.Add(ref this._insertedUsers, count);
+            Interlocked.Add(ref this.insertedUsers, count);
         }
 
         public void InsertedRevisions(int count)
         {
-            Interlocked.Add(ref this._insertedRevisions, count);
+            Interlocked.Add(ref this.insertedRevisions, count);
         }
     }
 }

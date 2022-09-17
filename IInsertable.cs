@@ -1,4 +1,4 @@
-﻿namespace WikiReader
+﻿namespace WikiLoader
 {
     using System.Data.SqlClient;
     using System.Threading;
@@ -22,6 +22,6 @@
 
         ManualResetEvent GetCompletedEvent();
 
-        void Insert(IInsertable? previous, DatabasePump pump, SqlConnection conn, IInsertableProgress progress);
+        void Insert(IInsertable? previous, DatabasePump pump, SqlConnection conn, IInsertableProgress progress, IXmlDumpParserProgress parserProgress);
     }
 }

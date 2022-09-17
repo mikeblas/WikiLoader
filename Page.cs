@@ -1,4 +1,4 @@
-﻿namespace WikiReader
+﻿namespace WikiLoader
 {
     using System;
     using System.Collections.Generic;
@@ -110,7 +110,7 @@
         /// <param name="pump"></param>
         /// <param name="conn">connection to use for insertion</param>
         /// <param name="progress">InsertableProgress interface for progress callbacks</param>
-        public void Insert(IInsertable? previous, DatabasePump pump, SqlConnection conn, IInsertableProgress progress)
+        public void Insert(IInsertable? previous, DatabasePump pump, SqlConnection conn, IInsertableProgress progress, IXmlDumpParserProgress parserProgress)
         {
             progress.AddPendingRevisions(this.revisions.Count);
 
@@ -126,18 +126,14 @@
             // insert the text that we have
             this.BulkInsertRevisionText(pump, conn);
 
-            Console.WriteLine(
-                $"[[{this.pageName}]]\n" +
-                $"   {this.revsAdded} revisions added, {this.revsAlready} revisions exist\n" +
-                $"   {this.usersAdded} users added, {this.usersAlready} users exist");
-
             this.UpdateProgress(conn);
+
+            parserProgress.CompletedPage(this.pageName, this.usersAdded, this.usersAlready, this.revsAdded, this.revsAlready);
         }
 
         private void UpdateProgress(SqlConnection conn)
         {
             // try to insert first
-
             using var insertCommand = new SqlCommand(
                 "WITH X AS (" +
                 "    SELECT * FROM (VALUES (@RunID, GETUTCDATE(), @FilePosition, @PageID)) AS X(RunID, ReportTime, FilePosition, PageID) " +
@@ -151,10 +147,9 @@
             insertCommand.Parameters.AddWithValue("@PageID", this.pageId);
 
             int rows = insertCommand.ExecuteNonQuery();
-
-            // not inserted, so a row exists ... let's update
             if (rows == 0)
             {
+                // not inserted, so a row exists ... let's update it
                 using var updateCommand = new SqlCommand(
                     "UPDATE RunProgress " +
                     "   SET FilePosition = @FilePosition, " +
@@ -185,7 +180,7 @@
             using var tableCreate = new SqlCommand(
                 $"CREATE TABLE [{tempTableName}] (" +
                 "	UserID BIGINT NOT NULL," +
-                "	UserName NVARCHAR(128) COLLATE SQL_Latin1_General_CP1_CS_AS NOT NULL );", conn);
+                "	UserName NVARCHAR(128) COLLATE SQL_Latin1_General_CP1_CS_AS NOT NULL);", conn);
             tableCreate.ExecuteNonQuery();
 
             long bulkActivity = -1;
@@ -205,7 +200,7 @@
                 sbc.WriteToServer(udr);
                 Trace.Assert(conn.State == ConnectionState.Open);
 
-                pump.CompleteActivity(bulkActivity, insertedUserSet.Count, "inserted users");
+                pump.CompleteActivity(bulkActivity, insertedUserSet.Count, null);
                 bulkActivity = -1;
 
                 // merge up.
@@ -407,7 +402,7 @@
 
         private void SelectAndInsertRevisions(DatabasePump pump, IInsertableProgress progress, IInsertable? previous, SqlConnection conn)
         {
-            long checkActivityID = pump.StartActivity("Check existing PageRevisions", null, this.pageId, this.revisions.Count);
+            long checkActivityID = pump.StartActivity("Check existing PageRevisions", this.namespaceId, this.pageId, this.revisions.Count);
 
             // build a hash set of all the known revisions of this page
             HashSet<long> knownRevisions = new ();
@@ -437,7 +432,7 @@
                 neededRevisions.Add(revID, rev);
             }
 
-            pump.CompleteActivity(checkActivityID, this.revisions.Count, "Processed");
+            pump.CompleteActivity(checkActivityID, this.revisions.Count, null);
 
 
             this.BulkInsertPageRevisions(pump, progress, previous, neededRevisions, conn);
@@ -479,9 +474,6 @@
                     sbc.WriteToServer(prdr);
                     Trace.Assert(conn.State == ConnectionState.Open);
 
-                    pump.CompleteActivity(bulkActivityID, null, null);
-                    bulkActivityID = -1;
-
                     progress.CompleteRevisions(neededRevisions.Count);
                     this.revsAdded += neededRevisions.Count;
                 }
@@ -493,7 +485,9 @@
 
                     ManualResetEvent mre = previous.GetCompletedEvent();
                     while (!mre.WaitOne(1000))
-                        Console.WriteLine($"[[{(this as IInsertable).ObjectName}]] is waiting on [[{previous.ObjectName}]]");
+                    {
+                        // Console.WriteLine($"[[{(this as IInsertable).ObjectName}]] is waiting on [[{previous.ObjectName}]]");
+                    }
                 }
                 else
                 {
@@ -512,6 +506,11 @@
             {
                 // signal the next in the chain of waiters
                 this.completeEvent.Set();
+
+                if (bulkActivityID != -1)
+                {
+                    pump.CompleteActivity(bulkActivityID, neededRevisions.Count, null);
+                }
             }
         }
 

@@ -1,4 +1,4 @@
-namespace WikiReader
+namespace WikiLoader
 {
     using System;
     using System.Collections.Generic;
