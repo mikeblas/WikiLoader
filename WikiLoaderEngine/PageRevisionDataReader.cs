@@ -237,7 +237,12 @@
                     if (record.Comment == null)
                         return DBNull.Value;
                     else
-                        return record.Comment;
+                    {
+                        if (record.Comment.Length <= 1000)
+                            return record.Comment;
+                        else
+                            return record.Comment.Substring(1000);
+                    }
 
                 case "pagerevisionid":
                     return record.RevisionId;

@@ -10,11 +10,21 @@
         private readonly List<User> contributors = new();
 
         /// <summary>
-        /// What user would be next read?
+        /// Index of the user to be next read from the IDataReader interface.
         /// </summary>
         private int currentUser = -1;
 
-        public UserDataReader(HashSet<long> insertedUserSet, IList<PageRevision> pages)
+
+        /// <summary>
+        /// Initializes a new instance of the <see cref="UserDataReader"/> class.
+        ///
+        /// This instance will reference the insertedUserSet to track which users have already been
+        /// inserrted. It will build a set of users not yet inserted for itself from the passed list,
+        /// and set itself up to supply those users from its IDataReader interface.
+        /// </summary>
+        /// <param name="insertedUserSet">Global set of users that have already been inserted. Accessed with locks.</param>
+        /// <param name="pages">PageRevision objects which will provide the users to be inserted.</param>
+        public UserDataReader(HashSet<long> insertedUserSet, IEnumerable<PageRevision> pages)
         {
             long lastUserID = -1;
             foreach (PageRevision pr in pages)
@@ -35,10 +45,6 @@
                         continue;
                 }
 
-                // if we're anonymous, then skip
-                if (pr.Contributor.IsAnonymous)
-                    continue;
-
                 // if we're not anonymous, add this user to our list
                 if (!pr.Contributor.IsAnonymous)
                 {
@@ -56,6 +62,9 @@
             }
         }
 
+        /// <summary>
+        /// Gets the count of users to actually be inserted by this object.
+        /// </summary>
         public int Count
         {
             get { return this.contributors.Count; }

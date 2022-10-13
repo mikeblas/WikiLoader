@@ -200,7 +200,7 @@
                 sbc.WriteToServer(udr);
                 Trace.Assert(conn.State == ConnectionState.Open);
 
-                pump.CompleteActivity(bulkActivity, insertedUserSet.Count, null);
+                pump.CompleteActivity(bulkActivity, udr.Count, null);
                 bulkActivity = -1;
 
                 // merge up.
@@ -471,7 +471,7 @@
                     sbc.ColumnMappings.Add(new SqlBulkCopyColumnMapping("TextAvailable", "TextAvailable"));
 
                     Trace.Assert(conn.State == ConnectionState.Open);
-                    sbc.WriteToServer(prdr);
+                    sbc.WriteToServer(prdr);    
                     Trace.Assert(conn.State == ConnectionState.Open);
 
                     progress.CompleteRevisions(neededRevisions.Count);

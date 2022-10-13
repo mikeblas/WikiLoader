@@ -143,8 +143,8 @@
             // another issue that might be better if we actually do some
             // connection pooling and/or use discrete threads instead of
             // the ThreadPool
-            get { return "Integrated Security=SSPI;Persist Security Info=False;Initial Catalog=Wikipedia;Data Source=lake;"; }
-            // get { return "Integrated Security=SSPI;Persist Security Info=False;Initial Catalog=Wikipedia;Data Source=lake;Pooling=false;"; }
+            get { return "Integrated Security=SSPI;Persist Security Info=False;Initial Catalog=Wikipedia;Data Source=slide;"; }
+            // get { return "Integrated Security=SSPI;Persist Security Info=False;Initial Catalog=Wikipedia;Data Source=slide;Pooling=false;"; }
         }
 
         /// <summary>

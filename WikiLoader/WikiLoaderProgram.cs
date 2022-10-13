@@ -36,7 +36,7 @@ namespace WikiLoader
             // string fileName = @"f:\junk\enwiki-latest-pages-meta-history10.xml-p000925001p000972034";
             // string fileName = @"f:\junk\enwiki-latest-pages-meta-history19.xml-p009225001p009575994";
             // string fileName = @"f:\junk\enwiki-latest-pages-meta-history3.xml-p000039229p000043715";
-            string fileName = @"f:\wiki\20220820\unzipped\enwiki-20220820-stub-meta-history5.xml";
+            string fileName = @"f:\wiki\20220820\unzipped\enwiki-20220820-stub-meta-history9.xml";
             if (args.Length >= 1)
                 fileName = args[0];
 
@@ -79,6 +79,8 @@ namespace WikiLoader
             while (xdp.Read())
             {
                 xdp.Work();
+                if (SigintReceived)
+                    xdp.Interrupt();
             }
 
             // wait for the pump to complete before spewing stats
@@ -108,7 +110,6 @@ namespace WikiLoader
                 Console.ResetColor();
                 Console.WriteLine();
             }
-
         }
 
         public void CompletedPage(string pageName, int usersAdded, int usersExist, int revisionsAdded, int revisionsExist)
