@@ -36,7 +36,7 @@ namespace WikiLoader
             // string fileName = @"f:\junk\enwiki-latest-pages-meta-history10.xml-p000925001p000972034";
             // string fileName = @"f:\junk\enwiki-latest-pages-meta-history19.xml-p009225001p009575994";
             // string fileName = @"f:\junk\enwiki-latest-pages-meta-history3.xml-p000039229p000043715";
-            string fileName = @"f:\wiki\20220820\unzipped\enwiki-20220820-stub-meta-history9.xml";
+            string fileName = @"f:\wiki\20220820\unzipped\enwiki-20220820-stub-meta-history11.xml";
             if (args.Length >= 1)
                 fileName = args[0];
 
@@ -70,11 +70,10 @@ namespace WikiLoader
         private void Parse(string fileName)
         {
             FileStream s = File.OpenRead(fileName);
-            using XmlReader reader = XmlReader.Create(s, null);
 
             long skipPosition = pump.DetermineSkipPosition(fileName);
 
-            XmlDumpParser xdp = new (s, reader, this.pump, skipPosition, this);
+            XmlDumpParser xdp = new (s, this.pump, skipPosition, this);
 
             while (xdp.Read())
             {

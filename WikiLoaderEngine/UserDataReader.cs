@@ -7,7 +7,7 @@
     internal class UserDataReader : IDataReader
     {
         // list of users this reader will supply
-        private readonly List<User> contributors = new();
+        private readonly List<User> contributors = new ();
 
         /// <summary>
         /// Index of the user to be next read from the IDataReader interface.
@@ -18,7 +18,7 @@
         /// <summary>
         /// Initializes a new instance of the <see cref="UserDataReader"/> class.
         ///
-        /// This instance will reference the insertedUserSet to track which users have already been
+        /// This instance will reference the InsertedUserSet to track which users have already been
         /// inserrted. It will build a set of users not yet inserted for itself from the passed list,
         /// and set itself up to supply those users from its IDataReader interface.
         /// </summary>

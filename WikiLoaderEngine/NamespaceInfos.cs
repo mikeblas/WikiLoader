@@ -17,36 +17,22 @@
     public class NamespaceInfos : IInsertable
     {
         /// <summary>
-        /// map of namespace IDs (as integers) to NamespaceInfo objects
+        /// map of namespace IDs (as integers) to NamespaceInfo objects.
         /// </summary>
         private readonly Dictionary<int, NamespaceInfo> namespaceMap;
 
-        private readonly ManualResetEvent completeEvent = new(false);
+        private readonly ManualResetEvent completeEvent = new (false);
 
         /// <summary>
-        /// Initializes a new NamespaceInfos collection
+        /// Initializes a new instance of the <see cref="NamespaceInfos"/> class.
         /// </summary>
         public NamespaceInfos()
         {
             this.namespaceMap = new Dictionary<int, NamespaceInfo>();
         }
 
-        public ManualResetEvent GetCompletedEvent()
-        {
-            return this.completeEvent;
-        }
-
         /// <summary>
-        /// Add a new NamespaceInfo
-        /// </summary>
-        /// <param name="nsi"></param>
-        public void Add(NamespaceInfo nsi)
-        {
-            this.namespaceMap.Add(nsi.ID, nsi);
-        }
-
-        /// <summary>
-        /// number of items in this collection
+        /// Gets the number of items in this collection.
         /// </summary>
         public int Count
         {
@@ -54,29 +40,47 @@
         }
 
         /// <summary>
-        /// Find a NamespaceInfo object given the ID key.
-        /// Returns null if we don't have it.
-        /// </summary>
-        /// <param name="key">NamespaceID to find</param>
-        /// <returns>NamespaceID, null if not found</returns>
-        public NamespaceInfo this[int key]
-        {
-            get { return this.namespaceMap[key]; }
-        }
-
-        /// <summary>
-        /// Get a collection containing our values (only)
+        /// Gets a collection containing our values (only).
         /// </summary>
         public Dictionary<int, NamespaceInfo>.ValueCollection Values
         {
             get { return this.namespaceMap.Values; }
         }
 
+        public ManualResetEvent CompletedEvent
+        {
+            get { return this.completeEvent; }
+        }
+
+        /// <summary>
+        /// Find a NamespaceInfo object given the ID key.
+        /// Returns null if we don't have it.
+        /// </summary>
+        /// <param name="key">NamespaceID to find.</param>
+        /// <returns>NamespaceID, null if not found.</returns>
+        public NamespaceInfo this[int key]
+        {
+            get { return this.namespaceMap[key]; }
+        }
+
+        /// <summary>
+        /// Add a new NamespaceInfo to this collection.
+        /// </summary>
+        /// <param name="nsi">NamespaceInfo to be added to the collection.</param>
+        public void Add(NamespaceInfo nsi)
+        {
+            this.namespaceMap.Add(nsi.ID, nsi);
+        }
+
         /// <summary>
         /// Insertable implementation: Insert method.
         /// Takes a SqlConnection and inserts the collection into it.
         /// </summary>
-        /// <param name="conn">SqlConnection to write into</param>
+        /// <param name="previous">previosly run IInsertable object that must complete before this work is attempted.</param>
+        /// <param name="pump">DatabasePump that will receive objects to be inserted.</param>
+        /// <param name="conn">SqlConnection to write into.</param>
+        /// <param name="progress">IInsertableProgress that will receive notifications of pasring progress.</param>
+        /// <param name="parserProgress">IXmlDumpParserProgress which will receive notifications of progress.</param>
         public void Insert(IInsertable? previous, DatabasePump pump, SqlConnection conn, IInsertableProgress progress, IXmlDumpParserProgress parserProgress)
         {
             // count of rows actually inserted

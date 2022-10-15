@@ -37,7 +37,7 @@
         private readonly long runId;
         private readonly long filePosition;
 
-        private readonly ManualResetEvent completeEvent = new(false);
+        private readonly ManualResetEvent completeEvent = new (false);
 
         private int usersAdded = 0;
         private int usersAlready = 0;
@@ -45,9 +45,9 @@
         private int revsAlready = 0;
 
         /// <summary>
-        /// set indicating which users we've already inserted
+        /// set indicating which users we've already inserted.
         /// </summary>
-        private static readonly HashSet<long> insertedUserSet = new ();
+        private static readonly HashSet<long> InsertedUserSet = new ();
 
         /// <summary>
         /// Map of revisions from RevisionID to the PageRevision at that ID
@@ -73,9 +73,9 @@
             this.filePosition = filePosition;
         }
 
-        public ManualResetEvent GetCompletedEvent()
+        public ManualResetEvent CompletedEvent
         {
-            return this.completeEvent;
+            get { return this.completeEvent; }
         }
 
         /// <summary>
@@ -188,7 +188,7 @@
             try
             {
                 // bulk insert into the temporary table
-                UserDataReader udr = new (insertedUserSet, this.revisions.Values);
+                UserDataReader udr = new (InsertedUserSet, this.revisions.Values);
                 SqlBulkCopy sbc = new (conn);
 
                 bulkActivity = pump.StartActivity("Bulk Insert Users", this.namespaceId, this.pageId, udr.Count);
@@ -471,7 +471,7 @@
                     sbc.ColumnMappings.Add(new SqlBulkCopyColumnMapping("TextAvailable", "TextAvailable"));
 
                     Trace.Assert(conn.State == ConnectionState.Open);
-                    sbc.WriteToServer(prdr);    
+                    sbc.WriteToServer(prdr);
                     Trace.Assert(conn.State == ConnectionState.Open);
 
                     progress.CompleteRevisions(neededRevisions.Count);
@@ -483,7 +483,7 @@
                 {
                     // Console.WriteLine($"[[{(this as IInsertable).ObjectName}]] waiting on [[{previous.ObjectName}]]");
 
-                    ManualResetEvent mre = previous.GetCompletedEvent();
+                    ManualResetEvent mre = previous.CompletedEvent;
                     while (!mre.WaitOne(1000))
                     {
                         // Console.WriteLine($"[[{(this as IInsertable).ObjectName}]] is waiting on [[{previous.ObjectName}]]");
@@ -572,7 +572,7 @@
                 // wait until the previous revision is done, if we've got one
                 if (previous != null)
                 {
-                    ManualResetEvent mre = previous.GetCompletedEvent();
+                    ManualResetEvent mre = previous.CompletedEvent;
                     mre.WaitOne();
                 }
 
@@ -728,13 +728,16 @@
         }
 
         /// <summary>
-        /// How many revisions do we plan to insert?
+        /// Gets the number of revisions we plan to insert.
         /// </summary>
         int IInsertable.RevisionCount
         {
             get { return this.revisions.Count; }
         }
 
+        /// <summary>
+        /// Gets the number of revisions remaining.
+        /// </summary>
         int IInsertable.RemainingRevisionCount
         {
             get { return this.revisions.Count - this.revsAlready; }
