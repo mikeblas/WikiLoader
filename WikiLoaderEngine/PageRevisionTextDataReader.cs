@@ -4,6 +4,10 @@
     using System.Collections.Generic;
     using System.Data;
 
+
+    /// <summary>
+    /// Implements IDataReader for PageRevisionText records.
+    /// </summary>
     internal class PageRevisionTextDataReader : IDataReader
     {
         // list of PageRevisions this reader will supply
@@ -17,7 +21,14 @@
         /// </summary>
         private int currentRevision = -1;
 
-        public PageRevisionTextDataReader(int namespaceID, long pageID, IList<PageRevision> pages)
+        /// <summary>
+        /// Initializes a new instance of the <see cref="PageRevisionTextDataReader"/> class for the given
+        /// revisions.
+        /// </summary>
+        /// <param name="namespaceID">integer with the namespaceID of this page.</param>
+        /// <param name="pageID">integer reprsenting the pageID for this page.</param>
+        /// <param name="pages">Collection of PageRevision objects to insert. Only those with a non-null Text property will be inserted.</param>
+        public PageRevisionTextDataReader(int namespaceID, long pageID, IEnumerable<PageRevision> pages)
         {
             this.namespaceID = namespaceID;
             this.pageID = pageID;
@@ -242,6 +253,5 @@
         {
             return false;
         }
-
     }
 }

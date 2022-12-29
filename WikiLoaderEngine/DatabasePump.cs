@@ -21,8 +21,6 @@
     /// </summary>
     public class DatabasePump : IInsertableProgress
     {
-        private static long previousPendingRevisionCount = -1;
-
         private readonly HashSet<WorkItemInfo> runningSet = new ();
 
         private long runningCount = 0;
@@ -55,7 +53,7 @@
         /// WorkItemInfo provides context for an execution. Contains the SqlConnection
         /// and the reference to the Insertable that we're working.
         /// </summary>
-        private class WorkItemInfo : IDisposable
+        private class WorkItemInfo : IDisposable, IWorkItemDescription
         {
             private IInsertable insertable;
             private IInsertable? previous;
@@ -134,17 +132,17 @@
                 return this.conn.State == ConnectionState.Open;
             }
 
-            internal string ObjectName
+            public string ObjectName
             {
                 get { return this.insertable.ObjectName; }
             }
 
-            internal int RevisionCount
+            public int RevisionCount
             {
                 get { return this.insertable.RevisionCount; }
             }
 
-            internal int RemainingRevisionCount
+            public int RemainingRevisionCount
             {
                 get { return this.insertable.RemainingRevisionCount; }
             }
@@ -286,6 +284,8 @@
 
         public long StartActivity(string activityName, int? namespaceID, long? pageID, long? workCount)
         {
+            return -1;
+
             using var conn = GetConnection();
 
             using var insertActivity = new SqlCommand(
@@ -314,6 +314,9 @@
         /// <param name="result">Error encountered; null if none.</param>
         public void CompleteActivity(long activityID, long? completedCount, string? result)
         {
+            if (activityID == -1)
+                return;
+
             using var conn = GetConnection();
 
             using var completeActivity = new SqlCommand(
@@ -355,31 +358,12 @@
         {
             // backpressure
             int pauses = 0;
-            while (Interlocked.Read(ref runningCount) >= 5 || Interlocked.Read(ref queuedCount) >= 100)
+            while (Interlocked.Read(ref runningCount) >= 5 && Interlocked.Read(ref queuedCount) >= 100)
             {
                 // report every 10 pauses == 1 second
                 if (pauses++ % 10 == 0)
                 {
-                    string main = $"Backpressure: {Interlocked.Read(ref runningCount)} running, {Interlocked.Read(ref queuedCount)} queued, {this.pendingRevisions} pending revisions";
-                    if (previousPendingRevisionCount != -1)
-                    {
-                        long delta = this.pendingRevisions - previousPendingRevisionCount;
-                        main = $"{main} ({delta:+#;-#;0})";
-                    }
-
-                    main += "\n";
-
-                    lock (this.runningSet)
-                    {
-                        foreach (var wii in this.runningSet)
-                        {
-                            main += $"   {wii.ObjectName}, {wii.RemainingRevisionCount} / {wii.RevisionCount}\n";
-                        }
-                    }
-
-                    Console.Write(main);
-
-                    previousPendingRevisionCount = this.pendingRevisions;
+                    parserProgress.BackPressurePulse(Interlocked.Read(ref runningCount), Interlocked.Read(ref queuedCount), this.pendingRevisions, this.runningSet);
                 }
 
                 Thread.Sleep(100);  // 100 milliseconds

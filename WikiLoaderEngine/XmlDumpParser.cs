@@ -55,6 +55,7 @@ namespace WikiLoaderEngine
         private int anonymousRevisions = 0;
         private bool sawMinor = false;
         private bool sawPageBegin = true;
+        private long lastProgressPosition = -1;
 
         private long currentActivity = -1;
         private Page? previousPage = null;
@@ -170,6 +171,16 @@ namespace WikiLoaderEngine
                 this.HandleSkippedStartElement();
         }
 
+
+        internal void CheckCallProgress(bool skipping)
+        {
+            if (s.Position != this.lastProgressPosition)
+            {
+                this.lastProgressPosition = s.Position;
+                parserProgress.FileProgress(s.Position, s.Length, skipping);
+            }
+        }
+
         internal void HandleEndElement()
         {
             switch (this.reader.Name)
@@ -179,12 +190,15 @@ namespace WikiLoaderEngine
 
                     if (s.Position < skipUntilPosition)
                     {
-                        parserProgress.FileProgress(s.Position, s.Length, true);
+                        // we're still skipping
+                        this.CheckCallProgress(true);
                         this.sawPageBegin = false;
                     }
                     else if (!sawPageBegin)
                     {
-                        parserProgress.FileProgress(s.Position, s.Length, true);
+                        // we're not skipping, but didn't see this full page;
+                        // so really still skipping
+                        this.CheckCallProgress(true);
                         this.sawPageBegin = false;
                     }
                     else
@@ -207,7 +221,7 @@ namespace WikiLoaderEngine
                         previousPage = page;
 
                         // write some stats
-                        parserProgress.FileProgress(s.Position, s.Length, false);
+                        this.CheckCallProgress(false);
 
                         // tally our stats
                         totalRevisions += revisionCount;

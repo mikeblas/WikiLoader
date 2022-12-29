@@ -17,7 +17,7 @@
         /// <param name="usersAdded">Number of Contributor users added for this page.</param>
         /// <param name="usersExist">Number of Contributor users that already existsed on this page.</param>
         /// <param name="revisionsAdded">Number of revisions added for this page.</param>
-        /// <param name="RevisionsExist">Number of revisions that already existed for this page.</param>
+        /// <param name="revisionsExist">Number of revisions that already existed for this page.</param>
         public void CompletedPage(string pageName, int usersAdded, int usersExist, int revisionsAdded, int revisionsExist);
 
         /// <summary>
@@ -26,6 +26,6 @@
         /// <param name="running">Number of threads running against the database.</param>
         /// <param name="queued">Number of work items queued to run.</param>
         /// <param name="pendingRevisions">Total number of pending page revisions among all queued work.</param>
-        public void BackPressurePulse(int running, int queued, int pendingRevisions);
+        public void BackPressurePulse(long running, long queued, int pendingRevisions, IEnumerable<IWorkItemDescription> runningSet);
     }
 }

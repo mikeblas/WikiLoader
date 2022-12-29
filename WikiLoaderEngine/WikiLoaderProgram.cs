@@ -31,7 +31,7 @@ namespace WikiLoader
 
         private static void Main(string[] args)
         {
-            string fileName = @"f:\wiki\20220820\unzipped\enwiki-20220820-stub-meta-history22.xml";
+            string fileName = @"f:\wiki\20220820\unzipped\enwiki-20220820-stub-meta-history15.xml";
             if (args.Length >= 1)
                 fileName = args[0];
 

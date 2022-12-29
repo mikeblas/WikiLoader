@@ -452,10 +452,12 @@
 
                     // bulk insert into the temporary table
                     PageRevisionDataReader prdr = new (this.namespaceId, this.pageId, neededRevisions.Values);
-                    var sbc = new SqlBulkCopy(conn);
-                    sbc.BulkCopyTimeout = 3600;
+                    var sbc = new SqlBulkCopy(conn)
+                    {
+                        BulkCopyTimeout = 3600,
+                        DestinationTableName = "PageRevision",
+                    };
 
-                    sbc.DestinationTableName = "PageRevision";
                     sbc.ColumnMappings.Add(new SqlBulkCopyColumnMapping("PageID", "PageID"));
                     sbc.ColumnMappings.Add(new SqlBulkCopyColumnMapping("NamespaceID", "NamespaceID"));
                     sbc.ColumnMappings.Add(new SqlBulkCopyColumnMapping("PageRevisionID", "PageRevisionID"));
