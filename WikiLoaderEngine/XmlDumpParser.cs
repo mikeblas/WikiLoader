@@ -23,6 +23,16 @@ namespace WikiLoaderEngine
         // progress interface to explain what we're doing
         private readonly IXmlDumpParserProgress parserProgress;
 
+        /// <summary>
+        /// File position marking the first spot wher we should start paying attention.
+        /// If zero, read the whole file.
+        /// </summary>
+        private readonly long skipUntilPosition;
+
+        private readonly FileStream s;
+        private readonly XmlReader reader;
+        private readonly DatabasePump pump;
+
         private string? pageName = null;
         private string? redirectTitle = null;
         private long revisionId = 0;
@@ -45,6 +55,7 @@ namespace WikiLoaderEngine
         private int anonymousRevisions = 0;
         private bool sawMinor = false;
         private bool sawPageBegin = true;
+        private long lastProgressPosition = -1;
 
         private long currentActivity = -1;
         private Page? previousPage = null;
@@ -52,33 +63,22 @@ namespace WikiLoaderEngine
         private bool quitNow = false;
 
         /// <summary>
-        /// File position marking the first spot wher we should start paying attention.
-        /// If zero, read the whole file.
+        /// Initializes a new instance of the <see cref="XmlDumpParser"/> class.
         /// </summary>
-        private long skipUntilPosition;
-
-        private FileStream s;
-        private XmlReader reader;
-        private DatabasePump pump;
-
-        public XmlDumpParser(FileStream s, XmlReader reader, DatabasePump pump, long skipUntilPosition, IXmlDumpParserProgress parserProgress)
+        /// <param name="s">FileStream we're reading.</param>
+        /// <param name="pump">DatabasePump used to push data to the database.</param>
+        /// <param name="skipUntilPosition">file offset to skip to; 0 if no skipping.</param>
+        /// <param name="parserProgress">IXmlDumpParserProgress that receives notification of parsing progress.</param>
+        public XmlDumpParser(FileStream s, DatabasePump pump, long skipUntilPosition, IXmlDumpParserProgress parserProgress)
         {
             this.s = s;
             this.parserProgress = parserProgress;
-            this.reader = reader;
             this.pump = pump;
             this.skipUntilPosition = skipUntilPosition;
+
+            this.reader = XmlReader.Create(s);
         }
 
-        public NamespaceInfos NamespaceMap
-        {
-            get { return this.namespaceMap; }
-        }
-
-        public void Interrupt()
-        {
-            this.quitNow = true;
-        }
 
         public int TotalMinorRevisions
         {
@@ -115,13 +115,44 @@ namespace WikiLoaderEngine
             get { return this.articleText.LargestLength;  }
         }
 
+
+        public NamespaceInfos NamespaceMap
+        {
+            get { return this.namespaceMap; }
+        }
+
+        public void Interrupt()
+        {
+            this.quitNow = true;
+        }
+
+        public bool Read()
+        {
+            if (quitNow)
+                return false;
+
+            return reader.Read();
+        }
+
+        public void Work()
+        {
+            if (this.reader.IsStartElement())
+            {
+                this.HandleStartElement();
+            }
+            else if (this.reader.NodeType == XmlNodeType.EndElement)
+            {
+                this.HandleEndElement();
+            }
+        }
+
         internal void HandleStartElement()
         {
             // always look for a title
             switch (this.reader.Name)
             {
                 case "title":
-                    reader.Read();
+                    this.reader.Read();
                     pageName = reader.Value;
                     break;
 
@@ -140,6 +171,16 @@ namespace WikiLoaderEngine
                 this.HandleSkippedStartElement();
         }
 
+
+        internal void CheckCallProgress(bool skipping)
+        {
+            if (s.Position != this.lastProgressPosition)
+            {
+                this.lastProgressPosition = s.Position;
+                parserProgress.FileProgress(s.Position, s.Length, skipping);
+            }
+        }
+
         internal void HandleEndElement()
         {
             switch (this.reader.Name)
@@ -149,12 +190,15 @@ namespace WikiLoaderEngine
 
                     if (s.Position < skipUntilPosition)
                     {
-                        parserProgress.FileProgress(s.Position, s.Length, true);
+                        // we're still skipping
+                        this.CheckCallProgress(true);
                         this.sawPageBegin = false;
                     }
                     else if (!sawPageBegin)
                     {
-                        parserProgress.FileProgress(s.Position, s.Length, true);
+                        // we're not skipping, but didn't see this full page;
+                        // so really still skipping
+                        this.CheckCallProgress(true);
                         this.sawPageBegin = false;
                     }
                     else
@@ -177,7 +221,7 @@ namespace WikiLoaderEngine
                         previousPage = page;
 
                         // write some stats
-                        parserProgress.FileProgress(s.Position, s.Length, false);
+                        this.CheckCallProgress(false);
 
                         // tally our stats
                         totalRevisions += revisionCount;
@@ -376,7 +420,7 @@ namespace WikiLoaderEngine
                     }
                     else
                     {
-                        Page newPage = new(this.namespaceId, this.pageId, this.pageName, this.redirectTitle, this.pump.RunID, this.s.Position);
+                        Page newPage = new (this.namespaceId, this.pageId, this.pageName, this.redirectTitle, this.pump.RunID, this.s.Position);
                         newPage.AddRevision(rev);
                         this.pageMap.Add(this.pageName, newPage);
                     }
@@ -404,27 +448,8 @@ namespace WikiLoaderEngine
                         else
                             this.contributorMap.Add(this.contributorUserName, 1);
                     }
+
                     break;
-            }
-        }
-
-        public bool Read()
-        {
-            if (quitNow)
-                return false;
-
-            return reader.Read();
-        }
-
-        public void Work()
-        {
-            if (this.reader.IsStartElement())
-            {
-                this.HandleStartElement();
-            }
-            else if (this.reader.NodeType == XmlNodeType.EndElement)
-            {
-                this.HandleEndElement();
             }
         }
     }

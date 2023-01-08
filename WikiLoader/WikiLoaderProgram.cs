@@ -3,18 +3,18 @@
 namespace WikiLoader
 {
     using System;
+    using System.Collections.Generic;
     using System.IO;
-    using System.IO.Enumeration;
-    using System.Reflection.PortableExecutable;
-    using System.Xml;
 
     using WikiLoaderEngine;
 
     internal class WikiLoaderProgram : IXmlDumpParserProgress
     {
-        internal static bool SigintReceived = false;
+        private static bool SigintReceived = false;
 
         private readonly DatabasePump pump;
+
+        private long previousPendingRevisionCount = -1;
 
         internal WikiLoaderProgram()
         {
@@ -31,12 +31,7 @@ namespace WikiLoader
 
         private static void Main(string[] args)
         {
-            // string fileName = @"C:\Junk\enwiki-latest-pages-meta-history1.xml-p000000010p000002933";
-            // string fileName = @"f:\junk\enwiki-latest-pages-meta-history4.xml-p000066951p000074581";
-            // string fileName = @"f:\junk\enwiki-latest-pages-meta-history10.xml-p000925001p000972034";
-            // string fileName = @"f:\junk\enwiki-latest-pages-meta-history19.xml-p009225001p009575994";
-            // string fileName = @"f:\junk\enwiki-latest-pages-meta-history3.xml-p000039229p000043715";
-            string fileName = @"f:\wiki\20220820\unzipped\enwiki-20220820-stub-meta-history5.xml";
+            string fileName = @"f:\wiki\20220820\unzipped\enwiki-20220820-stub-meta-history22.xml";
             if (args.Length >= 1)
                 fileName = args[0];
 
@@ -70,15 +65,16 @@ namespace WikiLoader
         private void Parse(string fileName)
         {
             FileStream s = File.OpenRead(fileName);
-            using XmlReader reader = XmlReader.Create(s, null);
 
             long skipPosition = pump.DetermineSkipPosition(fileName);
 
-            XmlDumpParser xdp = new (s, reader, this.pump, skipPosition, this);
+            XmlDumpParser xdp = new (s, this.pump, skipPosition, this);
 
             while (xdp.Read())
             {
                 xdp.Work();
+                if (SigintReceived)
+                    xdp.Interrupt();
             }
 
             // wait for the pump to complete before spewing stats
@@ -99,31 +95,56 @@ namespace WikiLoader
 
         public void FileProgress(long position, long length, bool skipping)
         {
-            if (skipping)
-                Console.WriteLine($"Skipped: {position} / {length}: {(position * 100.0) / length:##0.0000}");
-            else
+            lock (this)
             {
-                Console.BackgroundColor = ConsoleColor.DarkBlue;
-                Console.Write($"{position} / {length}: {(position * 100.0) / length:##0.0000}");
-                Console.ResetColor();
-                Console.WriteLine();
+                if (skipping)
+                    Console.WriteLine($"Skipped: {position} / {length}: {(position * 100.0) / length:##0.0000}");
+                else
+                {
+                    Console.BackgroundColor = ConsoleColor.DarkBlue;
+                    Console.Write($"{position} / {length}: {(position * 100.0) / length:##0.0000}");
+                    Console.ResetColor();
+                    Console.WriteLine();
+                }
             }
-
         }
 
         public void CompletedPage(string pageName, int usersAdded, int usersExist, int revisionsAdded, int revisionsExist)
         {
-            Console.WriteLine(
-                $"[[{pageName}]]\n" +
-                $"   {revisionsAdded} revisions added, {revisionsExist} revisions exist\n" +
-                $"   {usersAdded} users added, {usersExist} users exist");
+            lock (this)
+            {
+                Console.WriteLine(
+                    $"[[{pageName}]]\n" +
+                    $"   {revisionsAdded} revisions added, {revisionsExist} revisions exist\n" +
+                    $"   {usersAdded} users added, {usersExist} users exist");
+            }
         }
 
-        public void BackPressurePulse(int running, int queued, int pendingRevisions)
+        public void BackPressurePulse(long running, long queued, int pendingRevisions, IEnumerable<IWorkItemDescription> runningSet)
         {
-            // $"   Queued [[{pageName}]]: {revisionCount} revisions, {minorRevisionCount} minor revisions");
-            // $"   {running} running, {queued} queued, {pendingRevisions} pending revisions");
-            throw new NotImplementedException();
+            string main = $"Backpressure: {running} running, {queued} queued, {pendingRevisions} pending revisions";
+            if (previousPendingRevisionCount != -1)
+            {
+                long delta = pendingRevisions - this.previousPendingRevisionCount;
+                main = $"{main} ({delta:+#;-#;0})";
+            }
+
+            main += "\n";
+
+            lock (runningSet)
+            {
+                foreach (var wii in runningSet)
+                {
+                    main += $"   {wii.ObjectName}, {wii.RemainingRevisionCount} / {wii.RevisionCount}\n";
+                }
+            }
+
+            lock (this)
+            {
+                Console.Write(main);
+            }
+
+            previousPendingRevisionCount = pendingRevisions;
         }
     }
 }

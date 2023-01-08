@@ -18,7 +18,7 @@
         private readonly Dictionary<string, int> columnMap = new ();
         private readonly Dictionary<int, string> indexMap = new ();
 
-        private int _currentRevision = -1;
+        private int currentRevision = -1;
 
         public PageRevisionDataReader(int namespaceID, long pageID, IList<PageRevision> pages)
         {
@@ -44,16 +44,16 @@
             this.AddColumn("IPAddress");
         }
 
+        public int Count
+        {
+            get { return this.revisions.Count; }
+        }
+
         private void AddColumn(string columnName)
         {
             int index = this.columnMap.Count;
             this.columnMap.Add(columnName, index);
             this.indexMap.Add(index, columnName);
-        }
-
-        public int Count
-        {
-            get { return this.revisions.Count; }
         }
 
         void IDataReader.Close()
@@ -82,9 +82,9 @@
 
         bool IDataReader.Read()
         {
-            if (this._currentRevision + 1 >= this.revisions.Count)
+            if (this.currentRevision + 1 >= this.revisions.Count)
                 return false;
-            this._currentRevision += 1;
+            this.currentRevision += 1;
             return true;
         }
 
@@ -214,7 +214,7 @@
 
             string columnNameLower = columnName.ToLower();
 
-            PageRevision record = this.revisions[this._currentRevision];
+            PageRevision record = this.revisions[this.currentRevision];
 
             switch (columnNameLower)
             {
@@ -237,7 +237,12 @@
                     if (record.Comment == null)
                         return DBNull.Value;
                     else
-                        return record.Comment;
+                    {
+                        if (record.Comment.Length <= 1000)
+                            return record.Comment;
+                        else
+                            return record.Comment.Substring(1000);
+                    }
 
                 case "pagerevisionid":
                     return record.RevisionId;

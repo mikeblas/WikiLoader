@@ -20,12 +20,6 @@
             this.name = name;
         }
 
-        public void Reset()
-        {
-            this.current = null;
-            this.largest = null;
-        }
-
         public string Name
         {
             get { return this.name; }
@@ -63,6 +57,12 @@
             {
                 return this.largest == null ? 0 : this.largest.Length;
             }
+        }
+
+        public void Reset()
+        {
+            this.current = null;
+            this.largest = null;
         }
     }
 }

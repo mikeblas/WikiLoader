@@ -4,38 +4,49 @@
     using System.Collections.Generic;
     using System.Data;
 
+
+    /// <summary>
+    /// Implements IDataReader for PageRevisionText records.
+    /// </summary>
     internal class PageRevisionTextDataReader : IDataReader
     {
         // list of PageRevisions this reader will supply
-        readonly List<PageRevision> _revisions = new ();
+        private readonly List<PageRevision> revisions = new ();
+
+        private readonly int namespaceID;
+        private readonly long pageID;
 
         /// <summary>
-        /// What revision would be next read?
+        /// revision ID that we are currently reading.
         /// </summary>
-        int _currentRevision = -1;
-        readonly int _namespaceID;
-        readonly long _pageID;
+        private int currentRevision = -1;
 
-        public PageRevisionTextDataReader(int namespaceID, long pageID, IList<PageRevision> pages)
+        /// <summary>
+        /// Initializes a new instance of the <see cref="PageRevisionTextDataReader"/> class for the given
+        /// revisions.
+        /// </summary>
+        /// <param name="namespaceID">integer with the namespaceID of this page.</param>
+        /// <param name="pageID">integer reprsenting the pageID for this page.</param>
+        /// <param name="pages">Collection of PageRevision objects to insert. Only those with a non-null Text property will be inserted.</param>
+        public PageRevisionTextDataReader(int namespaceID, long pageID, IEnumerable<PageRevision> pages)
         {
-            _namespaceID = namespaceID;
-            _pageID = pageID;
+            this.namespaceID = namespaceID;
+            this.pageID = pageID;
             foreach (PageRevision pr in pages)
             {
                 // only consider pages that have text
                 if (pr.Text != null)
-                    _revisions.Add(pr);
+                    revisions.Add(pr);
             }
 
         }
 
+        /// <summary>
+        /// Gets the number of revisions we contain.
+        /// </summary>
         public int Count
         {
-            get { return _revisions.Count; }
-        }
-
-        void IDataReader.Close()
-        {
+            get { return revisions.Count; }
         }
 
         int IDataReader.Depth
@@ -43,14 +54,39 @@
             get { throw new NotImplementedException(); }
         }
 
-        DataTable IDataReader.GetSchemaTable()
-        {
-            throw new NotImplementedException();
-        }
-
         bool IDataReader.IsClosed
         {
             get { throw new NotImplementedException(); }
+        }
+
+        int IDataReader.RecordsAffected
+        {
+            get { throw new NotImplementedException(); }
+        }
+
+        int IDataRecord.FieldCount
+        {
+            get { return 4; }
+        }
+
+
+        object IDataRecord.this[string name]
+        {
+            get { throw new NotImplementedException(); }
+        }
+
+        object IDataRecord.this[int i]
+        {
+            get { throw new NotImplementedException(); }
+        }
+
+        void IDataReader.Close()
+        {
+        }
+
+        DataTable IDataReader.GetSchemaTable()
+        {
+            throw new NotImplementedException();
         }
 
         bool IDataReader.NextResult()
@@ -60,25 +96,15 @@
 
         bool IDataReader.Read()
         {
-            if (_currentRevision + 1 >= _revisions.Count)
+            if (currentRevision + 1 >= revisions.Count)
                 return false;
-            _currentRevision += 1;
+            currentRevision += 1;
             return true;
-        }
-
-        int IDataReader.RecordsAffected
-        {
-            get { throw new NotImplementedException(); }
         }
 
         void IDisposable.Dispose()
         {
             throw new NotImplementedException();
-        }
-
-        int IDataRecord.FieldCount
-        {
-            get { return 4; }
         }
 
         bool IDataRecord.GetBoolean(int i)
@@ -154,18 +180,18 @@
         int IDataRecord.GetInt32(int i)
         {
             if (i == 0)
-                return _namespaceID;
+                return namespaceID;
             throw new NotImplementedException();
         }
 
         long IDataRecord.GetInt64(int i)
         {
             if (i == 2)
-                return _revisions[_currentRevision].RevisionId;
+                return revisions[currentRevision].RevisionId;
             if (i == 1)
-                return _pageID;
+                return pageID;
             if (i == 0)
-                return _namespaceID;
+                return namespaceID;
             throw new NotImplementedException();
         }
 
@@ -190,7 +216,7 @@
         {
             if (i == 3)
             {
-                string? s = _revisions[_currentRevision].Text;
+                string? s = revisions[currentRevision].Text;
                 if (s == null)
                     throw new InvalidOperationException("null GetString");
                 return s;
@@ -203,18 +229,18 @@
         {
             if (i == 3)
             {
-                string? s = _revisions[_currentRevision].Text;
+                string? s = revisions[currentRevision].Text;
                 if (s == null)
                     throw new InvalidOperationException("null Getvalue");
                 return s;
             }
 
             if (i == 2)
-                return _revisions[_currentRevision].RevisionId;
+                return revisions[currentRevision].RevisionId;
             if (i == 1)
-                return _pageID;
+                return pageID;
             if (i == 0)
-                return _namespaceID;
+                return namespaceID;
             throw new NotImplementedException();
         }
 
@@ -226,16 +252,6 @@
         bool IDataRecord.IsDBNull(int i)
         {
             return false;
-        }
-
-        object IDataRecord.this[string name]
-        {
-            get { throw new NotImplementedException(); }
-        }
-
-        object IDataRecord.this[int i]
-        {
-            get { throw new NotImplementedException(); }
         }
     }
 }

@@ -21,14 +21,28 @@
     /// </summary>
     public class DatabasePump : IInsertableProgress
     {
-        private static long previousPendingRevisionCount = -1;
-
-        private static long runningCount = 0;
-        private static long queuedCount = 0;
-
         private readonly HashSet<WorkItemInfo> runningSet = new ();
 
+        private long runningCount = 0;
+        private long queuedCount = 0;
+
+        /// <summary>
+        /// implementation of IInsertableProgress.
+        /// </summary>
+        private int pendingRevisions = 0;
+        private int insertedPages = 0;
+        private int insertedUsers = 0;
+        private int insertedRevisions = 0;
+
         private long runID;
+
+        /// <summary>
+        /// Initializes a new instance of the <see cref="DatabasePump"/> class.
+        /// </summary>
+        public DatabasePump()
+        {
+        }
+
 
         public long RunID
         {
@@ -39,38 +53,41 @@
         /// WorkItemInfo provides context for an execution. Contains the SqlConnection
         /// and the reference to the Insertable that we're working.
         /// </summary>
-        private class WorkItemInfo : IDisposable
+        private class WorkItemInfo : IDisposable, IWorkItemDescription
         {
             private IInsertable insertable;
-            private IInsertable? _previous;
-            private SqlConnection? _conn;
-            private IInsertableProgress _progress;
-            private DatabasePump _pump;
+            private IInsertable? previous;
+            private SqlConnection? conn;
+            private IInsertableProgress progress;
+            private DatabasePump pump;
             private IXmlDumpParserProgress parserProgress;
 
             public WorkItemInfo(DatabasePump pump, IInsertable i, IInsertable? previous, IInsertableProgress progress, IXmlDumpParserProgress parserProgress)
             {
-                this._pump = pump;
+                this.pump = pump;
                 this.insertable = i;
-                this._previous = previous;
-                this._progress = progress;
+                this.previous = previous;
+                this.progress = progress;
                 this.parserProgress = parserProgress;
             }
 
             public void Dispose()
             {
-                if (this._conn != null)
+                if (this.conn != null)
                 {
-                    this._conn.Close();
-                    this._conn.Dispose();
+                    this.conn.Close();
+                    this.conn.Dispose();
                 }
 
-                this._conn = null;
+                this.conn = null;
             }
 
             internal void Insert()
             {
-                insertable.Insert(this._previous, this._pump, this._conn, this._progress, this.parserProgress);
+                if (conn == null)
+                    throw new InvalidOperationException("Can't insert without a connection");
+
+                insertable.Insert(this.previous, this.pump, this.conn, this.progress, this.parserProgress);
             }
 
             internal bool BuildConnection()
@@ -78,23 +95,23 @@
                 // get a new connection; use an ApplicationName parameter to indicate who we are
                 string totalConnectionString = $"{ConnectionString};Application Name=WikiLoader{Environment.CurrentManagedThreadId};";
 
-                this._conn = null;
+                this.conn = null;
                 try
                 {
-                    this._conn = new SqlConnection(totalConnectionString);
+                    this.conn = new SqlConnection(totalConnectionString);
                 }
                 catch (ArgumentException)
                 {
                     // something wrong, so fall back to a safer string
                     Console.WriteLine($"Connection failed. Connection string = \"{totalConnectionString}\"");
-                    this._conn = new SqlConnection(ConnectionString);
+                    this.conn = new SqlConnection(ConnectionString);
                 }
 
                 for (int retries = 10; retries > 0; retries--)
                 {
                     try
                     {
-                        this._conn.Open();
+                        this.conn.Open();
                         break;
                     }
                     catch (SqlException sex)
@@ -112,28 +129,27 @@
                     }
                 }
 
-                return this._conn.State == ConnectionState.Open;
+                return this.conn.State == ConnectionState.Open;
             }
 
-            internal string ObjectName
+            public string ObjectName
             {
                 get { return this.insertable.ObjectName; }
             }
 
-            internal int RevisionCount
+            public int RevisionCount
             {
                 get { return this.insertable.RevisionCount; }
             }
 
-            internal int RemainingRevisionCount
+            public int RemainingRevisionCount
             {
                 get { return this.insertable.RemainingRevisionCount; }
             }
         }
 
         /// <summary>
-        /// Our connection string. Just in one place here so we don't have to copy
-        /// it everywhere.
+        /// Gets our connection string. Just in one place here so we don't have to copy it everywhere.
         /// </summary>
         private static string ConnectionString
         {
@@ -143,15 +159,8 @@
             // another issue that might be better if we actually do some
             // connection pooling and/or use discrete threads instead of
             // the ThreadPool
-            get { return "Integrated Security=SSPI;Persist Security Info=False;Initial Catalog=Wikipedia;Data Source=lake;"; }
-            // get { return "Integrated Security=SSPI;Persist Security Info=False;Initial Catalog=Wikipedia;Data Source=lake;Pooling=false;"; }
-        }
-
-        /// <summary>
-        /// Initializes a new instance of the <see cref="DatabasePump"/> class.
-        /// </summary>
-        public DatabasePump()
-        {
+            get { return "Integrated Security=SSPI;Persist Security Info=False;Initial Catalog=Wikipedia;Data Source=slide;"; }
+            // get { return "Integrated Security=SSPI;Persist Security Info=False;Initial Catalog=Wikipedia;Data Source=slide;Pooling=false;"; }
         }
 
         /// <summary>
@@ -275,6 +284,8 @@
 
         public long StartActivity(string activityName, int? namespaceID, long? pageID, long? workCount)
         {
+            return -1;
+
             using var conn = GetConnection();
 
             using var insertActivity = new SqlCommand(
@@ -303,6 +314,9 @@
         /// <param name="result">Error encountered; null if none.</param>
         public void CompleteActivity(long activityID, long? completedCount, string? result)
         {
+            if (activityID == -1)
+                return;
+
             using var conn = GetConnection();
 
             using var completeActivity = new SqlCommand(
@@ -338,36 +352,18 @@
         /// </summary>
         /// <param name="i">reference to an object implementing IInsertable; we'll enqueue it and add it whne we have threads.</param>
         /// <param name="previous">reference to an object using IInsertable for the previously executed item.</param>
-        /// <returns>a tuple with the number of running, queued, and pending revisions</returns>
+        /// <param name="parserProgress">IXmlDumpParserProgrss taht receives notifications of parsing progress.</param>
+        /// <returns>a tuple with the number of running, queued, and pending revisions.</returns>
         public (long running, long queued, long pendingRevisions) Enqueue(IInsertable i, IInsertable? previous, IXmlDumpParserProgress parserProgress)
         {
             // backpressure
             int pauses = 0;
-            while (Interlocked.Read(ref runningCount) >= 5 || Interlocked.Read(ref queuedCount) >= 100)
+            while (Interlocked.Read(ref runningCount) >= 5 && Interlocked.Read(ref queuedCount) >= 100)
             {
                 // report every 10 pauses == 1 second
                 if (pauses++ % 10 == 0)
                 {
-                    string main = $"Backpressure: {Interlocked.Read(ref runningCount)} running, {Interlocked.Read(ref queuedCount)} queued, {this.pendingRevisions} pending revisions";
-                    if (previousPendingRevisionCount != -1)
-                    {
-                        long delta = this.pendingRevisions - previousPendingRevisionCount;
-                        main = $"{main} ({delta:+#;-#;0})";
-                    }
-
-                    main += "\n";
-
-                    lock (this.runningSet)
-                    {
-                        foreach (var wii in this.runningSet)
-                        {
-                            main += $"   {wii.ObjectName}, {wii.RemainingRevisionCount} / {wii.RevisionCount}\n";
-                        }
-                    }
-
-                    Console.Write(main);
-
-                    previousPendingRevisionCount = this.pendingRevisions;
+                    parserProgress.BackPressurePulse(Interlocked.Read(ref runningCount), Interlocked.Read(ref queuedCount), this.pendingRevisions, this.runningSet);
                 }
 
                 Thread.Sleep(100);  // 100 milliseconds
@@ -446,14 +442,6 @@
         {
             return this.insertedPages;
         }
-
-        /// <summary>
-        /// implementation of IInsertableProgress.
-        /// </summary>
-        private int pendingRevisions = 0;
-        private int insertedPages = 0;
-        private int insertedUsers = 0;
-        private int insertedRevisions = 0;
 
         public void AddPendingRevisions(int count)
         {

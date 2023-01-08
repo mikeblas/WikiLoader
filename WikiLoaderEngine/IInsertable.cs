@@ -20,7 +20,10 @@
             get;
         }
 
-        ManualResetEvent GetCompletedEvent();
+        ManualResetEvent CompletedEvent
+        {
+            get;
+        }
 
         void Insert(IInsertable? previous, DatabasePump pump, SqlConnection conn, IInsertableProgress progress, IXmlDumpParserProgress parserProgress);
     }
