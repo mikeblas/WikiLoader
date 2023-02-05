@@ -109,7 +109,7 @@ CREATE TABLE PageRevisionText (
 	ArticleText VARCHAR(MAX) NOT NULL
 ) ON SECONDARY;
 
-CREATE INDEX PageRevisionText_Page_AK ON PageRevisionText(PageID);
+CREATE INDEX PageRevisionText_Page_AK ON PageRevisionText(NamespaceID, PageID);
 
 ALTER TABLE [dbo].[PageRevisionText]  WITH CHECK ADD  CONSTRAINT [FK_PageRevisionText_Namespace] FOREIGN KEY([NamespaceID])
 REFERENCES [dbo].[Namespace] ([NamespaceID])

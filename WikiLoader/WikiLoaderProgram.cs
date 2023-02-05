@@ -29,9 +29,64 @@ namespace WikiLoader
             };
         }
 
+        public void FileProgress(long position, long length, bool skipping)
+        {
+            lock (this)
+            {
+                if (skipping)
+                    Console.WriteLine($"Skipped: {position} / {length}: {(position * 100.0) / length:##0.0000}");
+                else
+                {
+                    Console.BackgroundColor = ConsoleColor.DarkBlue;
+                    Console.Write($"{position} / {length}: {(position * 100.0) / length:##0.0000}");
+                    Console.ResetColor();
+                    Console.WriteLine();
+                }
+            }
+        }
+
+        public void CompletedPage(string pageName, int usersAdded, int usersExist, int revisionsAdded, int revisionsExist)
+        {
+            lock (this)
+            {
+                Console.WriteLine(
+                    $"[[{pageName}]]\n" +
+                    $"   {revisionsAdded} revisions added, {revisionsExist} revisions exist\n" +
+                    $"   {usersAdded} users added, {usersExist} users exist");
+            }
+        }
+
+        public void BackPressurePulse(long running, long queued, int pendingRevisions, IEnumerable<IWorkItemDescription> runningSet)
+        {
+            string main = $"Backpressure: {running} running, {queued} queued, {pendingRevisions} pending revisions";
+            if (previousPendingRevisionCount != -1)
+            {
+                long delta = pendingRevisions - this.previousPendingRevisionCount;
+                main = $"{main} ({delta:+#;-#;0})";
+            }
+
+            main += "\n";
+
+            lock (runningSet)
+            {
+                foreach (var wii in runningSet)
+                {
+                    main += $"   {wii.ObjectName}, {wii.RemainingRevisionCount} / {wii.RevisionCount}\n";
+                }
+            }
+
+            lock (this)
+            {
+                Console.Write(main);
+            }
+
+            previousPendingRevisionCount = pendingRevisions;
+        }
+
+
         private static void Main(string[] args)
         {
-            string fileName = @"f:\wiki\20220820\unzipped\enwiki-20220820-stub-meta-history22.xml";
+            string fileName = @"f:\wiki\20221220\unzipped\enwiki-20221220-stub-meta-history19.xml";
             if (args.Length >= 1)
                 fileName = args[0];
 
@@ -91,60 +146,6 @@ namespace WikiLoader
 
             foreach (NamespaceInfo ns in xdp.NamespaceMap.Values)
                 Console.WriteLine($"{ns.PageCount},{ns.Name}");
-        }
-
-        public void FileProgress(long position, long length, bool skipping)
-        {
-            lock (this)
-            {
-                if (skipping)
-                    Console.WriteLine($"Skipped: {position} / {length}: {(position * 100.0) / length:##0.0000}");
-                else
-                {
-                    Console.BackgroundColor = ConsoleColor.DarkBlue;
-                    Console.Write($"{position} / {length}: {(position * 100.0) / length:##0.0000}");
-                    Console.ResetColor();
-                    Console.WriteLine();
-                }
-            }
-        }
-
-        public void CompletedPage(string pageName, int usersAdded, int usersExist, int revisionsAdded, int revisionsExist)
-        {
-            lock (this)
-            {
-                Console.WriteLine(
-                    $"[[{pageName}]]\n" +
-                    $"   {revisionsAdded} revisions added, {revisionsExist} revisions exist\n" +
-                    $"   {usersAdded} users added, {usersExist} users exist");
-            }
-        }
-
-        public void BackPressurePulse(long running, long queued, int pendingRevisions, IEnumerable<IWorkItemDescription> runningSet)
-        {
-            string main = $"Backpressure: {running} running, {queued} queued, {pendingRevisions} pending revisions";
-            if (previousPendingRevisionCount != -1)
-            {
-                long delta = pendingRevisions - this.previousPendingRevisionCount;
-                main = $"{main} ({delta:+#;-#;0})";
-            }
-
-            main += "\n";
-
-            lock (runningSet)
-            {
-                foreach (var wii in runningSet)
-                {
-                    main += $"   {wii.ObjectName}, {wii.RemainingRevisionCount} / {wii.RevisionCount}\n";
-                }
-            }
-
-            lock (this)
-            {
-                Console.Write(main);
-            }
-
-            previousPendingRevisionCount = pendingRevisions;
         }
     }
 }

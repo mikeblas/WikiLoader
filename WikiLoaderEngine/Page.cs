@@ -68,7 +68,11 @@
             this.namespaceId = namespaceId;
             this.pageName = pageName;
             this.pageId = pageId;
-            this.redirectTitle = redirectName;
+            //TODO: add truncation logging
+            if (redirectName != null && redirectName.Length > 510)
+                this.redirectTitle = redirectName[..510];
+            else
+                this.redirectTitle = redirectName;
             this.runId = runId;
             this.filePosition = filePosition;
         }
@@ -115,20 +119,33 @@
             progress.AddPendingRevisions(this.revisions.Count);
 
             // first, insert all the users
+            Stopwatch usersTime = Stopwatch.StartNew();
             this.BulkInsertUsers(pump, conn);
+            usersTime.Stop();
 
             // insert the page record itself
+            Stopwatch pageTime = Stopwatch.StartNew();
             this.InsertPage(pump, progress, conn);
+            pageTime.Stop();
 
             // then, insert the revisions
+            Stopwatch revisionsTime = Stopwatch.StartNew();
             this.SelectAndInsertRevisions(pump, progress, previous, conn);
+            revisionsTime.Stop();
 
             // insert the text that we have
+            Stopwatch revisionsTextTime = Stopwatch.StartNew();
             this.BulkInsertRevisionText(pump, conn);
+            revisionsTextTime.Stop();
 
+            Stopwatch progressTime = Stopwatch.StartNew();
             this.UpdateProgress(conn);
+            progressTime.Stop();
 
             parserProgress.CompletedPage(this.pageName, this.usersAdded, this.usersAlready, this.revsAdded, this.revsAlready);
+            Console.WriteLine($"{this.pageName}: usersTime: {usersTime.ElapsedMilliseconds}, pageTime: {pageTime.ElapsedMilliseconds}, " +
+                $"revisionsTime: {revisionsTime.ElapsedMilliseconds}, revisionsTextTime: {revisionsTextTime.ElapsedMilliseconds}, " +
+                $"progressTime: {progressTime.ElapsedMilliseconds}");
         }
 
         private void UpdateProgress(SqlConnection conn)
@@ -666,8 +683,8 @@
 
         /// <summary>
         /// Insert the page object itself. There's no batching here, since pages are infrequent
-        /// compared to all their revisions and text. We'll blindly insert, then handle any duplicate
-        /// errors by doing an update (since redirection may be updated).
+        /// compared to all their revisions and text. Check to see if the page exists with a SELECT,
+        /// then INSERT or UPDATE as needed because that proves to be faster.
         /// </summary>
         /// <param name="pump">Database pump object to record our activity</param>
         /// <param name="progress">implementation of IProgress interface to track our work</param>
@@ -675,28 +692,70 @@
         private void InsertPage(DatabasePump pump, IInsertableProgress progress, SqlConnection conn)
         {
             long activityID = pump.StartActivity("Insert Page", this.namespaceId, this.pageId, 1);
-            using var cmd = new SqlCommand("INSERT INTO [Page] (NamespaceID, PageID, PageName, RedirectTitle) VALUES (@NamespaceID, @PageID, @PageName, @RedirectTitle);", conn);
-            cmd.Parameters.AddWithValue("@NamespaceID", this.namespaceId);
-            cmd.Parameters.AddWithValue("@PageID", this.pageId);
-            cmd.Parameters.AddWithValue("@PageName", this.pageName);
-            cmd.Parameters.AddWithValue("@RedirectTitle", this.redirectTitle ?? (object)DBNull.Value);
+
+            using var cmdSelect = new SqlCommand("SELECT PageID, NamespaceID FROM [Page] WHERE PageID = @PageID", conn);
+            cmdSelect.Parameters.AddWithValue("@PageID", this.pageId);
+
+            bool found = false;
+            bool updateNeeded = false;
+            using (var reader = cmdSelect.ExecuteReader())
+            {
+                while (reader.Read())
+                {
+                    found = true;
+                    object o = reader["NamespaceID"];
+                    if (o == null || o == DBNull.Value)
+                    {
+                        if (this.redirectTitle != null)
+                            updateNeeded = true;
+                    }
+                    else
+                    {
+                        if (this.redirectTitle == null)
+                            updateNeeded = true;
+                    }
+                }
+            }
 
             Exception? exResult = null;
             int inserted = 0;
             try
             {
-                cmd.ExecuteNonQuery();
-                progress.InsertedPages(1);
-                inserted++;
-            }
-            catch (SqlException sex)
-            {
-                exResult = sex;
-                if (sex.Number == 8152)
-                    Console.WriteLine($"Error: page name is too long at {this.pageName.Length} characters");
-                else if (sex.Number == 2601 || sex.Number == 2627)
+                // what did we find?
+                if (!found)
                 {
-                    // duplicate! we'll do an update instead
+                    try
+                    {
+                        // not found, must insert
+                        using var insertCmd = new SqlCommand("INSERT INTO [Page] (NamespaceID, PageID, PageName, RedirectTitle) VALUES (@NamespaceID, @PageID, @PageName, @RedirectTitle);", conn);
+                        insertCmd.Parameters.AddWithValue("@NamespaceID", this.namespaceId);
+                        insertCmd.Parameters.AddWithValue("@PageID", this.pageId);
+                        insertCmd.Parameters.AddWithValue("@PageName", this.pageName);
+                        insertCmd.Parameters.AddWithValue("@RedirectTitle", this.redirectTitle ?? (object)DBNull.Value);
+
+                        insertCmd.ExecuteNonQuery();
+                        progress.InsertedPages(1);
+                        inserted++;
+                    }
+                    catch (SqlException sex)
+                    {
+                        exResult = sex;
+                        if (sex.Number == 8152)
+                            Console.WriteLine($"Error: page name is too long at {this.pageName.Length} characters");
+                        else if (sex.Number == 2601 || sex.Number == 2627)
+                        {
+                            throw new InvalidOperationException("unexpected duplicate when adding page");
+                        }
+                        else
+                        {
+                            exResult = null;
+                            throw;
+                        }
+                    }
+                }
+                else if (updateNeeded)
+                {
+                    // it's there, but not current. Do an update
                     using var updateCmd = new SqlCommand("UPDATE [Page] SET RedirectTitle = @RedirectTitle WHERE PageID = @PageID AND NamespaceID = @NamespaceID;", conn);
                     updateCmd.Parameters.AddWithValue("@NamespaceID", this.namespaceId);
                     updateCmd.Parameters.AddWithValue("@PageID", this.pageId);
@@ -704,11 +763,6 @@
 
                     updateCmd.ExecuteNonQuery();
                     exResult = null;
-                }
-                else
-                {
-                    exResult = null;
-                    throw;
                 }
             }
             catch (Exception ex)
@@ -720,6 +774,9 @@
                 pump.CompleteActivity(activityID, inserted, exResult?.Message);
             }
         }
+
+
+
 
         /// <summary>
         /// Gets our object name; this is used to name the connection in SQL Server.
