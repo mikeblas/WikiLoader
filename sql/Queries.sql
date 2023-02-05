@@ -65,16 +65,6 @@ SELECT PageRevision.NamespaceID, PageRevision.PageID, PageRevision.PageRevisionI
 ORDER BY 1, 2, 3;
 
 
-
-select * from [page] where pageid= 564696 and namespaceid = 4;
-
-
-select TOP 1000 * from Activity Order by ActivityID DESC
-
-select TOP 1000 * from Activity WHERE RunID = 56 AND Activity = 'Merge PageRevisions' Order by ActivityID DESC
-
-select * from Activity WHERE WorkCount = 22990 
-
 -- number of revisions per page
 SELECT Total.PageID, PageName, PageRevisionCount
  FROM 
@@ -83,6 +73,7 @@ SELECT Total.PageID, PageName, PageRevisionCount
   GROUP BY PageID) AS Total
 JOIN Page ON Page.PageID = Total.PageID
   ORDER BY 3 DESC;
+
 
 -- top 100 revisions per page
 SELECT NS.NamespaceName, Page.PageName, RevisionCount
@@ -119,12 +110,14 @@ SELECT * FROM PageRevision
 -- ContributorID == 0 is ignored.
 SELECT * FROM PageRevision WHERE ContributorID NOT IN (SELECT UserID FROM [User]) AND ContributorID != 0;
 
+
 -- number of pages per namespace
 SELECT Namespace.NamespaceID, NamespaceName, COUNT(Namespace.NamespaceID)
   FROM [Page]
   JOIN Namespace ON Namespace.NamespaceID = [Page].NamespaceID
 GROUP BY Namespace.NamespaceID, NamespaceName
 ORDER BY 3 DESC;
+
 
 -- Contributions by non-anonymous contributor
 SELECT TOP 1000 UserID, UserName, Contributions
@@ -137,6 +130,7 @@ FROM
 ) AS Tally
 JOIN [User] AS U on U.UserID = Tally.ContributorID
 ORDER BY 3 DESC;
+
 
 -- Contributions by anonymous contributors
    SELECT IPAddress, COUNT(IPAddress) AS Contributions
@@ -162,9 +156,31 @@ select *
 ORDER BY DurationMillis DESC;
 
 
-select * from PageRevision WHERE ContributorID IS NULL AND IPAddress IS NULL;
+-- contributors with the most versions
+  SELECT TOP 10 ContributorID, [USer].UserName, COUNT(ContributorID) ContribCount
+    FROM PageRevision
+    JOIN [User] ON PageRevision.ContributorID = [User].UserID
+   WHERE ContributorID != 0
+GROUP BY ContributorID, [User].UserName
+ORDER BY 3 DESC;
 
-select * from PageRevision WHERE ContributorID = 0 AND IPAddress IS null;
+
+
+-- pages with the most revisions
+SELECT NamespaceName, PageName, RevisionCount
+FROM
+(
+SELECT TOP 100 NamespaceID, PageID, COUNT(PageRevisionID) RevisionCount
+FROM PageRevision
+GROUP BY NamespaceID, PageID
+ORDER BY 3 DESC
+) AS X
+JOIN Namespace ON Namespace.NamespaceID = X.NamespaceID
+JOIN Page ON Page.PageID = X.PageID AND Page.NamespaceID = X.NamespaceID
+ORDER BY 3 DESC;
+
+
+
 
 -- it's me! UserID = 327592
 select * from [user] where username = 'Mikeblas';
@@ -186,11 +202,9 @@ ORDER BY TotalRevisions DESC;
    WHERE ArticleText IS NOT NULL
 ORDER BY ArticleTextLength DESC;
 
-SELECT * FROM PageRevision WHERE ContributorID = 0 AND IPAddress = 0;
 
 select * from PageRevision WHERE UserDeleted = 1;
 
 select * from PageRevision WHERE Comment IS NULL;
 
-select * from Page ORDER BY PageID
 
