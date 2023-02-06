@@ -154,23 +154,42 @@
 
         private void UpdateProgress(SqlConnection conn)
         {
-            //TODO: this might cause a duplicate insert, so we should catch and update
+            bool insertWorked = false;
+            try
+            {
+                // try to insert first
+                using var insertCommand = new SqlCommand(
+                    "WITH X AS (" +
+                    "    SELECT * FROM (VALUES (@RunID, GETUTCDATE(), @FilePosition, @PageID)) AS X(RunID, ReportTime, FilePosition, PageID) " +
+                    ") " +
+                    "INSERT RunProgress (RunID, ReportTime, FilePosition, PageID) " +
+                    "SELECT RunID, ReportTime, FilePosition, PageID " +
+                    "  FROM X " +
+                    " WHERE NOT EXISTS (SELECT RunID FROM RunProgress WHERE RunID = X.RunID)", conn);
+                insertCommand.Parameters.AddWithValue("@RunID", this.runId);
+                insertCommand.Parameters.AddWithValue("@FilePosition", this.filePosition);
+                insertCommand.Parameters.AddWithValue("@PageID", this.pageId);
 
-            // try to insert first
-            using var insertCommand = new SqlCommand(
-                "WITH X AS (" +
-                "    SELECT * FROM (VALUES (@RunID, GETUTCDATE(), @FilePosition, @PageID)) AS X(RunID, ReportTime, FilePosition, PageID) " +
-                ") " +
-                "INSERT RunProgress (RunID, ReportTime, FilePosition, PageID) " +
-                "SELECT RunID, ReportTime, FilePosition, PageID " +
-                "  FROM X " +
-                " WHERE NOT EXISTS (SELECT RunID FROM RunProgress WHERE RunID = X.RunID)", conn);
-            insertCommand.Parameters.AddWithValue("@RunID", this.runId);
-            insertCommand.Parameters.AddWithValue("@FilePosition", this.filePosition);
-            insertCommand.Parameters.AddWithValue("@PageID", this.pageId);
+                int rows = insertCommand.ExecuteNonQuery();
+                if (rows > 0)
+                    insertWorked = true;
+            }
+            catch (SqlException sex)
+            {
+                if (sex.Number == 2601 || sex.Number == 2627)
+                {
+                    // it's a dupe!
+                    insertWorked = false;
+                }
+                else
+                {
+                    // don't know what that was
+                    throw;
+                }
+            }
 
-            int rows = insertCommand.ExecuteNonQuery();
-            if (rows == 0)
+            // insert didn't work, so we update
+            if (!insertWorked)
             {
                 // not inserted, so a row exists ... let's update it
                 using var updateCommand = new SqlCommand(
