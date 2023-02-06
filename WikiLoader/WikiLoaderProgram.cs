@@ -45,14 +45,15 @@ namespace WikiLoader
             }
         }
 
-        public void CompletedPage(string pageName, int usersAdded, int usersExist, int revisionsAdded, int revisionsExist)
+        public void CompletedPage(string pageName, int usersAdded, int usersExist, int revisionsAdded, int revisionsExist, long timeMilliseconds)
         {
             lock (this)
             {
                 Console.WriteLine(
                     $"[[{pageName}]]\n" +
                     $"   {revisionsAdded} revisions added, {revisionsExist} revisions exist\n" +
-                    $"   {usersAdded} users added, {usersExist} users exist");
+                    $"   {usersAdded} users added, {usersExist} users exist\n" +
+                    $"   {timeMilliseconds} milliseconds");
             }
         }
 
@@ -86,7 +87,7 @@ namespace WikiLoader
 
         private static void Main(string[] args)
         {
-            string fileName = @"f:\wiki\20221220\unzipped\enwiki-20221220-stub-meta-history19.xml";
+            string fileName = @"f:\wiki\20221220\unzipped\enwiki-20221220-stub-meta-history21.xml";
             if (args.Length >= 1)
                 fileName = args[0];
 

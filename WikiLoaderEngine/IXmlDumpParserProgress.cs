@@ -18,7 +18,8 @@
         /// <param name="usersExist">Number of Contributor users that already existsed on this page.</param>
         /// <param name="revisionsAdded">Number of revisions added for this page.</param>
         /// <param name="revisionsExist">Number of revisions that already existed for this page.</param>
-        public void CompletedPage(string pageName, int usersAdded, int usersExist, int revisionsAdded, int revisionsExist);
+        /// <param name="timeMilliseconds">Time to process in milliseconds.</param>
+        public void CompletedPage(string pageName, int usersAdded, int usersExist, int revisionsAdded, int revisionsExist, long timeMilliseconds);
 
         /// <summary>
         /// Called when backpressure prevents something from being enqueued.

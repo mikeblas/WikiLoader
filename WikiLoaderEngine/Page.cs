@@ -142,14 +142,20 @@
             this.UpdateProgress(conn);
             progressTime.Stop();
 
-            parserProgress.CompletedPage(this.pageName, this.usersAdded, this.usersAlready, this.revsAdded, this.revsAlready);
+            long totalMilliseconds = usersTime.ElapsedMilliseconds + pageTime.ElapsedMilliseconds + revisionsTime.ElapsedMilliseconds + revisionsTextTime.ElapsedMilliseconds + progressTime.ElapsedMilliseconds;
+
+            parserProgress.CompletedPage(this.pageName, this.usersAdded, this.usersAlready, this.revsAdded, this.revsAlready, totalMilliseconds);
+            /*
             Console.WriteLine($"{this.pageName}: usersTime: {usersTime.ElapsedMilliseconds}, pageTime: {pageTime.ElapsedMilliseconds}, " +
                 $"revisionsTime: {revisionsTime.ElapsedMilliseconds}, revisionsTextTime: {revisionsTextTime.ElapsedMilliseconds}, " +
                 $"progressTime: {progressTime.ElapsedMilliseconds}");
+            */
         }
 
         private void UpdateProgress(SqlConnection conn)
         {
+            //TODO: this might cause a duplicate insert, so we should catch and update
+
             // try to insert first
             using var insertCommand = new SqlCommand(
                 "WITH X AS (" +
