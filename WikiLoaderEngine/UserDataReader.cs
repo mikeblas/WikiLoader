@@ -19,11 +19,29 @@
         /// Initializes a new instance of the <see cref="UserDataReader"/> class.
         ///
         /// This instance will reference the InsertedUserSet to track which users have already been
-        /// inserrted. It will build a set of users not yet inserted for itself from the passed list,
+        /// inserted. It will build a set of users not yet inserted for itself from the passed list,
         /// and set itself up to supply those users from its IDataReader interface.
         /// </summary>
         /// <param name="insertedUserSet">Global set of users that have already been inserted. Accessed with locks.</param>
         /// <param name="pages">PageRevision objects which will provide the users to be inserted.</param>
+        public UserDataReader(IDictionary<long, bool> insertedUserSet, IEnumerable<PageRevision> pages)
+        {
+            foreach (PageRevision pr in pages)
+            {
+                if (pr.Contributor == null)
+                    continue;
+
+                if (!pr.Contributor.IsAnonymous)
+                {
+                    if (insertedUserSet.TryAdd(pr.Contributor.ID, true))
+                    {
+                        this.contributors.Add(pr.Contributor);
+                    }
+                }
+            }
+        }
+
+        /*
         public UserDataReader(HashSet<long> insertedUserSet, IEnumerable<PageRevision> pages)
         {
             long lastUserID = -1;
@@ -61,10 +79,11 @@
                 }
             }
         }
+        */
 
-        /// <summary>
-        /// Gets the count of users to actually be inserted by this object.
-        /// </summary>
+            /// <summary>
+            /// Gets the count of users to actually be inserted by this object.
+            /// </summary>
         public int Count
         {
             get { return this.contributors.Count; }

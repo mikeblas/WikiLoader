@@ -5,16 +5,18 @@ namespace WikiLoader
     using System;
     using System.Collections.Generic;
     using System.IO;
-
+    using System.Text;
     using WikiLoaderEngine;
 
     internal class WikiLoaderProgram : IXmlDumpParserProgress
     {
-        private static bool SigintReceived = false;
+        private static bool sigintReceived = false;
 
         private readonly DatabasePump pump;
 
         private long previousPendingRevisionCount = -1;
+
+        private long noUpdatePagesCount = 0;
 
         // position percentage last time we reported it
         private string? lastPositionPercent = null;
@@ -27,7 +29,7 @@ namespace WikiLoader
             Console.CancelKeyPress += (sender, e) =>
             {
                 e.Cancel = true;
-                WikiLoaderProgram.SigintReceived = true;
+                WikiLoaderProgram.sigintReceived = true;
                 Console.WriteLine("CTRL+C received! Shutting down ...");
             };
         }
@@ -64,33 +66,40 @@ namespace WikiLoader
                         $"[[{pageName}]]\n" +
                         $"   {revisionsAdded} revisions added, {revisionsExist} revisions exist\n" +
                         $"   {usersAdded} users added, {usersExist} users exist\n" +
-                        $"   {timeMilliseconds} milliseconds");
+                        $"   {timeMilliseconds} milliseconds\n" +
+                        $"   {this.noUpdatePagesCount} pages with no updates");
+                    this.noUpdatePagesCount = 0;
+                }
+                else
+                {
+                    this.noUpdatePagesCount += 1;
                 }
             }
         }
 
-        public void BackPressurePulse(long running, long queued, int pendingRevisions, IEnumerable<IWorkItemDescription> runningSet)
+        public void BackPressurePulse(long running, long queued, int pendingRevisions, IDictionary<IWorkItemDescription, bool> runningSet)
         {
-            string main = $"Backpressure: {running} running, {queued} queued, {pendingRevisions} pending revisions";
+            StringBuilder builder = new ($"Back pressure: {running} running, {queued} queued, {pendingRevisions} pending revisions");
             if (previousPendingRevisionCount != -1)
             {
                 long delta = pendingRevisions - this.previousPendingRevisionCount;
-                main = $"{main} ({delta:+#;-#;0})";
+                builder.Append($" ({delta:+#;-#;0})");
             }
 
-            main += "\n";
+            builder.Append(Environment.NewLine);
 
             lock (runningSet)
             {
-                foreach (var wii in runningSet)
+                foreach (var wii in runningSet.Keys)
                 {
-                    main += $"   {wii.ObjectName}, {wii.RemainingRevisionCount} / {wii.RevisionCount}\n";
+                    builder.Append($"   {wii.ObjectName}, {wii.RemainingRevisionCount} revisions remaining of {wii.RevisionCount}\n");
                 }
             }
 
             lock (this)
             {
-                Console.Write(main);
+                // Console.ForegroundColor = ConsoleColor.Yellow;
+                Console.Write(builder.ToString());
             }
 
             previousPendingRevisionCount = pendingRevisions;
@@ -99,7 +108,7 @@ namespace WikiLoader
 
         private static void Main(string[] args)
         {
-            string fileName = @"v:\wiki\202411\history\uncompressed\enwiki-20241101-stub-meta-history24.xml";
+            string fileName = @"v:\wiki\202411\history\uncompressed\enwiki-20241101-stub-meta-history25.xml";
             // string fileName = @"f:\wiki\20240701\history\unzipped\enwiki-20240701-stub-meta-history27.xml";
             // string fileName = @"f:\wiki\20240701\current\unzipped\enwiki-20240701-pages-meta-current2.xml-p41243p151573";
             if (args.Length >= 1)
@@ -115,7 +124,7 @@ namespace WikiLoader
             {
                 this.pump.StartRun(fileName);
                 this.Parse(fileName);
-                if (SigintReceived)
+                if (sigintReceived)
                     strResult = "Canceled";
                 else
                     strResult = "Success";
@@ -142,7 +151,7 @@ namespace WikiLoader
             while (xdp.Read())
             {
                 xdp.Work();
-                if (SigintReceived)
+                if (sigintReceived)
                     xdp.Interrupt();
             }
 

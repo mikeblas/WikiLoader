@@ -1,6 +1,7 @@
 ﻿namespace WikiLoaderEngine
 {
     using System;
+    using System.Collections.Concurrent;
     using System.Collections.Generic;
     using System.Data;
     using System.Data.SqlClient;
@@ -47,7 +48,7 @@
         /// <summary>
         /// set indicating which users we've already inserted.
         /// </summary>
-        private static readonly HashSet<long> InsertedUserSet = new ();
+        private static readonly ConcurrentDictionary<long, bool> InsertedUserSet = new ();
 
         /// <summary>
         /// Map of revisions from RevisionID to the PageRevision at that ID
@@ -145,8 +146,9 @@
             long totalMilliseconds = usersTime.ElapsedMilliseconds + pageTime.ElapsedMilliseconds + revisionsTime.ElapsedMilliseconds + revisionsTextTime.ElapsedMilliseconds + progressTime.ElapsedMilliseconds;
 
             parserProgress.CompletedPage(this.pageName, this.usersAdded, this.usersAlready, this.revsAdded, this.revsAlready, totalMilliseconds);
+
             /*
-            Console.WriteLine($"{this.pageName}: usersTime: {usersTime.ElapsedMilliseconds}, pageTime: {pageTime.ElapsedMilliseconds}, " +
+            Console.WriteLine($"   {this.pageName}: usersTime: {usersTime.ElapsedMilliseconds}, pageTime: {pageTime.ElapsedMilliseconds}, " +
                 $"revisionsTime: {revisionsTime.ElapsedMilliseconds}, revisionsTextTime: {revisionsTextTime.ElapsedMilliseconds}, " +
                 $"progressTime: {progressTime.ElapsedMilliseconds}");
             */
@@ -549,9 +551,9 @@
                     // Console.WriteLine($"[[{(this as IInsertable).ObjectName}]] waiting on [[{previous.ObjectName}]]");
 
                     ManualResetEvent mre = previous.CompletedEvent;
-                    while (!mre.WaitOne(1000))
+                    while (!mre.WaitOne(100))
                     {
-                        // Console.WriteLine($"[[{(this as IInsertable).ObjectName}]] is waiting on [[{previous.ObjectName}]]");
+                        Console.WriteLine($"[[{(this as IInsertable).ObjectName}]] is waiting on [[{previous.ObjectName}]]");
                     }
                 }
                 else

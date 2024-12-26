@@ -1,10 +1,12 @@
 ﻿namespace WikiLoaderEngine
 {
     using System;
+    using System.Collections.Concurrent;
     using System.Collections.Generic;
     using System.Data;
     using System.Data.SqlClient;
     using System.Data.SqlTypes;
+    using System.Diagnostics;
     using System.IO;
     using System.Threading;
 
@@ -21,10 +23,13 @@
     /// </summary>
     public class DatabasePump : IInsertableProgress
     {
-        private readonly HashSet<WorkItemInfo> runningSet = new ();
+        private readonly ConcurrentDictionary<IWorkItemDescription, bool> runningSet = new ();
 
-        private long runningCount = 0;
-        private long queuedCount = 0;
+        // number of work items currently running
+        private long runningWorkItemCount = 0;
+
+        // number of work items queued
+        private long queuedWorkItemCount = 0;
 
         /// <summary>
         /// implementation of IInsertableProgress.
@@ -92,6 +97,8 @@
 
             internal bool BuildConnection()
             {
+                Stopwatch connectionTime = Stopwatch.StartNew();
+
                 // get a new connection; use an ApplicationName parameter to indicate who we are
                 string totalConnectionString = $"{ConnectionString};Application Name=WikiLoader{Environment.CurrentManagedThreadId};";
 
@@ -129,6 +136,8 @@
                     }
                 }
 
+                connectionTime.Stop();
+                // Console.WriteLine($"took {connectionTime.ElapsedMilliseconds} ms to connect");
                 return this.conn.State == ConnectionState.Open;
             }
 
@@ -356,14 +365,14 @@
         /// <returns>a tuple with the number of running, queued, and pending revisions.</returns>
         public (long running, long queued, long pendingRevisions) Enqueue(IInsertable i, IInsertable? previous, IXmlDumpParserProgress parserProgress)
         {
-            // backpressure
+            // back pressure
             int pauses = 0;
-            while (Interlocked.Read(ref runningCount) >= 5 && Interlocked.Read(ref queuedCount) >= 100)
+            while (Interlocked.Read(ref runningWorkItemCount) >= 32 && Interlocked.Read(ref queuedWorkItemCount) >= 640)
             {
-                // report every 10 pauses == 1 second
-                if (pauses++ % 10 == 0)
+                // report every 50 pauses == 5 seconds
+                if (pauses++ % 50 == 0)
                 {
-                    parserProgress.BackPressurePulse(Interlocked.Read(ref runningCount), Interlocked.Read(ref queuedCount), this.pendingRevisions, this.runningSet);
+                    parserProgress.BackPressurePulse(Interlocked.Read(ref runningWorkItemCount), Interlocked.Read(ref queuedWorkItemCount), this.pendingRevisions, this.runningSet);
                 }
 
                 Thread.Sleep(100);  // 100 milliseconds
@@ -374,14 +383,14 @@
             WorkItemInfo ci = new (this, i, previous, this, parserProgress);
 
             // queue it up!
-            Interlocked.Increment(ref queuedCount);
-            ThreadPool.SetMaxThreads(8, 1);
+            Interlocked.Increment(ref queuedWorkItemCount);
+            ThreadPool.SetMaxThreads(32, 1);
             ThreadPool.QueueUserWorkItem(new WaitCallback(this.WorkCallback), ci);
 
             // return our current running count. This might
             // not have incremented just yet, but this is a convenient
             // time to help show status
-            return (runningCount, queuedCount, this.pendingRevisions);
+            return (runningWorkItemCount, queuedWorkItemCount, this.pendingRevisions);
         }
 
         /// <summary>
@@ -398,15 +407,12 @@
             using WorkItemInfo wii = (WorkItemInfo)obj;
 
             // remove from the queued count
-            Interlocked.Decrement(ref queuedCount);
+            Interlocked.Decrement(ref queuedWorkItemCount);
 
             // add to the running count
-            Interlocked.Increment(ref runningCount);
+            Interlocked.Increment(ref runningWorkItemCount);
 
-            lock (this.runningSet)
-            {
-                this.runningSet.Add(wii);
-            }
+            this.runningSet.TryAdd(wii, true);
 
             try
             {
@@ -418,22 +424,22 @@
             finally
             {
                 // decrement our running count
-                Interlocked.Decrement(ref runningCount);
+                Interlocked.Decrement(ref runningWorkItemCount);
 
                 // remove from the set of running
-                lock (this.runningSet)
-                {
-                    this.runningSet.Remove(wii);
-                 }
+                this.runningSet.Remove(wii, out _);
             }
         }
 
         public void WaitForComplete()
         {
-            while (runningCount > 0)
+            while (runningWorkItemCount > 0)
             {
-                Console.WriteLine($"{runningCount} still running, {queuedCount} queued, {this.pendingRevisions} pending revisions");
-                Thread.Sleep(1000);
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.Write($"{runningWorkItemCount} work items running, {queuedWorkItemCount} work items queued, {this.pendingRevisions} pending revisions");
+                Console.ResetColor();
+                Console.WriteLine();
+                Thread.Sleep(2500);
             }
 
             return;
