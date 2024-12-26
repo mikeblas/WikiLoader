@@ -14,7 +14,7 @@
     /// and have them insert themselves into the database.
     ///
     /// Kind of coarse right now; it just uses the ThreadPool, which leaves no
-    /// backpressure, so we implement our own.
+    /// back pressure, so we implement our own.
     ///
     /// Only one instance can exist because of some shared state in static members.
     /// Need to add some singleton pattern implementation so that it is protected.
@@ -159,7 +159,7 @@
             // another issue that might be better if we actually do some
             // connection pooling and/or use discrete threads instead of
             // the ThreadPool
-            get { return "Integrated Security=SSPI;Persist Security Info=False;Initial Catalog=Wikipedia;Data Source=slide;"; }
+            get { return "Integrated Security=SSPI;Persist Security Info=False;Initial Catalog=Wikipedia;Data Source=circle;"; }
             // get { return "Integrated Security=SSPI;Persist Security Info=False;Initial Catalog=Wikipedia;Data Source=slide;Pooling=false;"; }
         }
 
@@ -350,9 +350,9 @@
         /// <summary>
         /// Add an Insertable that is ready to go to the database.
         /// </summary>
-        /// <param name="i">reference to an object implementing IInsertable; we'll enqueue it and add it whne we have threads.</param>
+        /// <param name="i">reference to an object implementing IInsertable; we'll enqueue it and add it when we have threads.</param>
         /// <param name="previous">reference to an object using IInsertable for the previously executed item.</param>
-        /// <param name="parserProgress">IXmlDumpParserProgrss taht receives notifications of parsing progress.</param>
+        /// <param name="parserProgress">IXmlDumpParserProgress that receives notifications of parsing progress.</param>
         /// <returns>a tuple with the number of running, queued, and pending revisions.</returns>
         public (long running, long queued, long pendingRevisions) Enqueue(IInsertable i, IInsertable? previous, IXmlDumpParserProgress parserProgress)
         {
@@ -375,6 +375,7 @@
 
             // queue it up!
             Interlocked.Increment(ref queuedCount);
+            ThreadPool.SetMaxThreads(8, 1);
             ThreadPool.QueueUserWorkItem(new WaitCallback(this.WorkCallback), ci);
 
             // return our current running count. This might

@@ -16,6 +16,9 @@ namespace WikiLoader
 
         private long previousPendingRevisionCount = -1;
 
+        // position percentage last time we reported it
+        private string? lastPositionPercent = null;
+
         internal WikiLoaderProgram()
         {
             this.pump = new DatabasePump();
@@ -33,14 +36,20 @@ namespace WikiLoader
         {
             lock (this)
             {
-                if (skipping)
-                    Console.WriteLine($"Skipped: {position} / {length}: {(position * 100.0) / length:##0.0000}");
-                else
+                string positionPercent = $"{(position * 100.0) / length:##0.0000}";
+                if (this.lastPositionPercent == null || !positionPercent.Equals(this.lastPositionPercent))
                 {
-                    Console.BackgroundColor = ConsoleColor.DarkBlue;
-                    Console.Write($"{position} / {length}: {(position * 100.0) / length:##0.0000}");
-                    Console.ResetColor();
-                    Console.WriteLine();
+                    if (skipping)
+                        Console.WriteLine($"Skipped: {position} / {length}: {(position * 100.0) / length:##0.0000}");
+                    else
+                    {
+                        Console.BackgroundColor = ConsoleColor.DarkBlue;
+                        Console.Write($"{position} / {length}: {(position * 100.0) / length:##0.0000}");
+                        Console.ResetColor();
+                        Console.WriteLine();
+                    }
+
+                    this.lastPositionPercent = positionPercent;
                 }
             }
         }
@@ -49,11 +58,14 @@ namespace WikiLoader
         {
             lock (this)
             {
-                Console.WriteLine(
-                    $"[[{pageName}]]\n" +
-                    $"   {revisionsAdded} revisions added, {revisionsExist} revisions exist\n" +
-                    $"   {usersAdded} users added, {usersExist} users exist\n" +
-                    $"   {timeMilliseconds} milliseconds");
+                if (revisionsAdded != 0 || usersAdded != 0)
+                {
+                    Console.WriteLine(
+                        $"[[{pageName}]]\n" +
+                        $"   {revisionsAdded} revisions added, {revisionsExist} revisions exist\n" +
+                        $"   {usersAdded} users added, {usersExist} users exist\n" +
+                        $"   {timeMilliseconds} milliseconds");
+                }
             }
         }
 
@@ -87,10 +99,11 @@ namespace WikiLoader
 
         private static void Main(string[] args)
         {
-            string fileName = @"f:\wiki\20221220\unzipped\enwiki-20221220-stub-meta-history21.xml";
+            string fileName = @"v:\wiki\202411\history\uncompressed\enwiki-20241101-stub-meta-history24.xml";
+            // string fileName = @"f:\wiki\20240701\history\unzipped\enwiki-20240701-stub-meta-history27.xml";
+            // string fileName = @"f:\wiki\20240701\current\unzipped\enwiki-20240701-pages-meta-current2.xml-p41243p151573";
             if (args.Length >= 1)
                 fileName = args[0];
-
             WikiLoaderProgram p = new ();
             p.Run(fileName);
         }
@@ -103,7 +116,7 @@ namespace WikiLoader
                 this.pump.StartRun(fileName);
                 this.Parse(fileName);
                 if (SigintReceived)
-                    strResult = "Cancelled";
+                    strResult = "Canceled";
                 else
                     strResult = "Success";
             }

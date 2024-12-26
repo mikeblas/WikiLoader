@@ -330,8 +330,11 @@ namespace WikiLoaderEngine
 
                 case "text":
                     // "text" may be an empty element;
-                    // if so, we're not inside it (and won't have contributor name or ID)
-                    if (!this.reader.IsEmptyElement)
+                    if (this.reader.IsEmptyElement)
+                    {
+                        this.articleText.Current = null;
+                    }
+                    else
                     {
                         this.reader.Read();
                         try
@@ -347,12 +350,8 @@ namespace WikiLoaderEngine
                             Console.WriteLine($"revisionID == {this.revisionId}");
                             Console.WriteLine($"reader == {this.reader.Value.Length}");
                             Console.WriteLine($"timestamp == {this.timestamp}");
-                            throw oom;
+                            throw;
                         }
-                    }
-                    else
-                    {
-                        this.articleText.Current = null;
                     }
 
                     break;
@@ -398,7 +397,7 @@ namespace WikiLoaderEngine
                     {
                         if (this.contributorIp.Current == null)
                         {
-                            // deletd contribution; contributor remains null
+                            // deleted contribution; contributor remains null
                             // for the PageRevision constructor
                         }
                         else

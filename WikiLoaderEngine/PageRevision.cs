@@ -97,6 +97,14 @@
             }
         }
 
+        public bool TextAvailable
+        {
+            get
+            {
+                return (this.text != null);
+            }
+        }
+
         public int TextLength
         {
             get { return this.textLength; }

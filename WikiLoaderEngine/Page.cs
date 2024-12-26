@@ -60,7 +60,7 @@
         /// <param name="namespaceId">namespaceId where this page lives.</param>
         /// <param name="pageId">pageID for this page.</param>
         /// <param name="pageName">name of this page.</param>
-        /// <param name="redirectName">name of page this redirscts to, null if not a redirect.</param>
+        /// <param name="redirectName">name of page this redirects to, null if not a redirect.</param>
         /// <param name="runId">RunID we're working.</param>
         /// <param name="filePosition">position of file to start working (0 if entire file).</param>
         public Page(int namespaceId, long pageId, string pageName, string? redirectName, long runId, long filePosition)
@@ -282,13 +282,13 @@
                         else
                         {
                             Console.WriteLine($"[[{this.pageName}]]: Exception during USER merge of {udr.Count} rows. {sex.Number}: {sex.Source}\n{sex.Message}");
-                            throw sex;
+                            throw;
                         }
                     }
                     catch (InvalidOperationException ioe)
                     {
                         Console.WriteLine($"[[{this.pageName}]]: Exception during PageRevision merge of {udr.Count} rows. {ioe.Message}\n{ioe.StackTrace}");
-                        throw ioe;
+                        throw;
                     }
                     finally
                     {
@@ -320,9 +320,9 @@
         }
 
         /// <summary>
-        /// Insert the text of the revisions we're keeping
+        /// Insert the text of the revisions we're keeping.
         /// </summary>
-        /// <param name="conn">connection to use for insertion</param>
+        /// <param name="conn">connection to use for insertion.</param>
         private void BulkInsertRevisionText(DatabasePump pump, SqlConnection conn)
         {
             // build our data reader first
@@ -381,8 +381,15 @@
                             "  AND [PageRevisionText].PageRevisionID = SRC.PageRevisionID " +
                             "WHEN NOT MATCHED THEN " +
                             "INSERT (NamespaceID, PageID, PageRevisionID, ArticleText) VALUES (SRC.NamespaceID, SRC.PageID, SRC.PageRevisionID, SRC.ArticleText);", conn);
-                        this.usersAdded = tableMerge.ExecuteNonQuery();
-                        this.usersAlready = prtdr.Count - this.usersAdded;
+                        int inserted = tableMerge.ExecuteNonQuery();
+
+                        // now update TextAvailable
+                        using var availableUpdate = new SqlCommand(
+                            "UPDATE PageRevision " +
+                            "   SET TextAvailable = 1 " +
+                           $" WHERE PageRevisionID IN (SELECT PageRevisionID FROM {tempTableName})", conn);
+                        int updated = availableUpdate.ExecuteNonQuery();
+
                         mergeException = null;
                         break;
                     }
@@ -405,13 +412,13 @@
                         else
                         {
                             Console.WriteLine($"[[{this.pageName}]]: Exception during TEXT merge of {prtdr.Count} rows. {sex.Number}: {sex.Source}\n{sex.Message}");
-                            throw sex;
+                            throw;
                         }
                     }
                     catch (InvalidOperationException ioe)
                     {
                         Console.WriteLine($"[[{this.pageName}]]: Exception during TEXT merge of {prtdr.Count} rows. {ioe.Message}\n{ioe.StackTrace}");
-                        throw ioe;
+                        throw;
                     }
                     finally
                     {
@@ -447,9 +454,9 @@
             long checkActivityID = pump.StartActivity("Check existing PageRevisions", this.namespaceId, this.pageId, this.revisions.Count);
 
             // build a hash set of all the known revisions of this page
-            HashSet<long> knownRevisions = new ();
+            Dictionary<long, ExistingPageRevisionInfo> knownRevisions = new ();
 
-            using var cmdSelect = new SqlCommand("select PageRevisionID FROM PageRevision WHERE PageID = @PageID", conn);
+            using var cmdSelect = new SqlCommand("select PageRevisionID, TextAvailable FROM PageRevision WHERE PageID = @PageID", conn);
             cmdSelect.Parameters.AddWithValue("@NamespaceID", this.namespaceId);
             cmdSelect.Parameters.AddWithValue("@PageID", this.pageId);
             cmdSelect.CommandTimeout = 3600;
@@ -457,18 +464,32 @@
             using (var reader = cmdSelect.ExecuteReader())
             {
                 while (reader.Read())
-                    knownRevisions.Add((long)reader["PageRevisionID"]);
+                {
+                    ExistingPageRevisionInfo epri = new ()
+                    {
+                        ID = (long)reader["PageRevisionID"],
+                        TextAvailable = (bool)reader["TextAvailable"],
+                    };
+                    knownRevisions.Add(epri.ID, epri);
+                }
             }
 
             SortedList<long, PageRevision> neededRevisions = new ();
 
             foreach ((long revID, var rev) in this.revisions)
             {
-                if (knownRevisions.Contains(revID))
+                ExistingPageRevisionInfo? revInfo;
+
+                // do we have it? skip it if we don't already have its text and have it here
+                if (knownRevisions.TryGetValue(revID, out revInfo))
                 {
-                    progress.CompleteRevisions(1);
-                    this.revsAlready += 1;
-                    continue;
+                    // skip, unless new input has text and we don't already have it
+                    if (!(!revInfo.TextAvailable && rev.TextAvailable))
+                    {
+                        progress.CompleteRevisions(1);
+                        this.revsAlready += 1;
+                        continue;
+                    }
                 }
 
                 neededRevisions.Add(revID, rev);
@@ -485,7 +506,7 @@
         {
             long bulkActivityID = -1;
 
-            // now, bulk insert the ones we didin't find
+            // now, bulk insert the ones we didn't find
             try
             {
                 if (neededRevisions.Count > 0)
@@ -667,13 +688,13 @@
                         else
                         {
                             Console.WriteLine($"[[{this.pageName}]]: Exception during PageRegision merge of {prdr.Count} rows. {sex.Number}: {sex.Source}\n{sex.Message}");
-                            throw sex;
+                            throw;
                         }
                     }
                     catch (InvalidOperationException ioe)
                     {
                         Console.WriteLine($"[[{this.pageName}]]: Exception during PageRevision merge of {prdr.Count} rows. {ioe.Message}\n{ioe.StackTrace}");
-                        throw ioe;
+                        throw;
                     }
                     finally
                     {

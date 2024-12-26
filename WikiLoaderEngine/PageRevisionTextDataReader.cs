@@ -26,7 +26,7 @@
         /// revisions.
         /// </summary>
         /// <param name="namespaceID">integer with the namespaceID of this page.</param>
-        /// <param name="pageID">integer reprsenting the pageID for this page.</param>
+        /// <param name="pageID">integer representing the pageID for this page.</param>
         /// <param name="pages">Collection of PageRevision objects to insert. Only those with a non-null Text property will be inserted.</param>
         public PageRevisionTextDataReader(int namespaceID, long pageID, IEnumerable<PageRevision> pages)
         {
