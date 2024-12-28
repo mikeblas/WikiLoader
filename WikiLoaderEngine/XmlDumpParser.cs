@@ -215,8 +215,7 @@ namespace WikiLoaderEngine
                             currentActivity = -1;
                         }
 
-                        // (long running, long queued, long pendingRevisions) = this.pump.Enqueue(page, previousPage);
-                        (long running, long queued, long pendingRevisions) = this.pump.Enqueue(page, null, parserProgress);
+                        this.pump.Enqueue(page, parserProgress);
 
                         previousPage = page;
 

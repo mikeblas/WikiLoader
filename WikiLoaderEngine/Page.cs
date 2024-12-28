@@ -38,12 +38,12 @@
         private readonly long runId;
         private readonly long filePosition;
 
-        private readonly ManualResetEvent completeEvent = new (false);
-
         private int usersAdded = 0;
         private int usersAlready = 0;
         private int revsAdded = 0;
         private int revsAlready = 0;
+
+        private string state = "idle";
 
         /// <summary>
         /// set indicating which users we've already inserted.
@@ -51,7 +51,7 @@
         private static readonly ConcurrentDictionary<long, bool> InsertedUserSet = new ();
 
         /// <summary>
-        /// Map of revisions from RevisionID to the PageRevision at that ID
+        /// Map of revisions from RevisionID to the PageRevision at that ID.
         /// </summary>
         private readonly SortedList<long, PageRevision> revisions = new ();
 
@@ -76,11 +76,6 @@
                 this.redirectTitle = redirectName;
             this.runId = runId;
             this.filePosition = filePosition;
-        }
-
-        public ManualResetEvent CompletedEvent
-        {
-            get { return this.completeEvent; }
         }
 
         /// <summary>
@@ -111,102 +106,115 @@
         /// <summary>
         /// Insert this page, all its revisions, text, and related users.
         /// </summary>
-        /// <param name="previous"></param>
-        /// <param name="pump"></param>
-        /// <param name="conn">connection to use for insertion</param>
-        /// <param name="progress">InsertableProgress interface for progress callbacks</param>
-        public void Insert(IInsertable? previous, DatabasePump pump, SqlConnection conn, IInsertableProgress progress, IXmlDumpParserProgress parserProgress)
+        /// <param name="pump">reference to our database pump.</param>
+        /// <param name="conn">connection to use for insertion.</param>
+        /// <param name="progress">InsertableProgress interface for progress callbacks.</param>
+        /// <param name="parserProgress">IXmlDumpParserProgress interface which receives notifications for completed pages.</param>
+        public void Insert(DatabasePump pump, SqlConnection conn, IInsertableProgress progress, IXmlDumpParserProgress parserProgress)
         {
+            // tally pending revisions for status
             progress.AddPendingRevisions(this.revisions.Count);
 
-            // first, insert all the users
-            Stopwatch usersTime = Stopwatch.StartNew();
-            this.BulkInsertUsers(pump, conn);
-            usersTime.Stop();
-
-            // insert the page record itself
+            // first, insert the page record itself
             Stopwatch pageTime = Stopwatch.StartNew();
+            state = "inserting page";
             this.InsertPage(pump, progress, conn);
             pageTime.Stop();
 
-            // then, insert the revisions
+            // see what revisions are needed
+            Stopwatch revisionsReadTime = Stopwatch.StartNew();
+            var neededRevisions = this.FindNeededRevisions(pump, progress, conn);
+            revisionsReadTime.Stop();
+
+            // insert users for those revisions
+            Stopwatch usersTime = Stopwatch.StartNew();
+            state = "inserting users";
+            this.InsertUsers(pump, neededRevisions, conn);
+            usersTime.Stop();
+
+            // then, insert the revisions themselves
             Stopwatch revisionsTime = Stopwatch.StartNew();
-            this.SelectAndInsertRevisions(pump, progress, previous, conn);
+            this.BulkInsertPageRevisions(pump, progress, neededRevisions, conn);
             revisionsTime.Stop();
 
             // insert the text that we have
             Stopwatch revisionsTextTime = Stopwatch.StartNew();
+            state = "inserting text";
             this.BulkInsertRevisionText(pump, conn);
             revisionsTextTime.Stop();
 
             Stopwatch progressTime = Stopwatch.StartNew();
-            this.UpdateProgress(conn);
+            state = "updating progress";
+            pump.UpdateRunProgress(conn, this.filePosition, this.pageId);
             progressTime.Stop();
 
-            long totalMilliseconds = usersTime.ElapsedMilliseconds + pageTime.ElapsedMilliseconds + revisionsTime.ElapsedMilliseconds + revisionsTextTime.ElapsedMilliseconds + progressTime.ElapsedMilliseconds;
+            long totalMilliseconds = usersTime.ElapsedMilliseconds + pageTime.ElapsedMilliseconds + revisionsReadTime.ElapsedMilliseconds + revisionsTime.ElapsedMilliseconds + revisionsTextTime.ElapsedMilliseconds + progressTime.ElapsedMilliseconds;
 
             parserProgress.CompletedPage(this.pageName, this.usersAdded, this.usersAlready, this.revsAdded, this.revsAlready, totalMilliseconds);
+
+            state = "complete"; 
 
             /*
             Console.WriteLine($"   {this.pageName}: usersTime: {usersTime.ElapsedMilliseconds}, pageTime: {pageTime.ElapsedMilliseconds}, " +
                 $"revisionsTime: {revisionsTime.ElapsedMilliseconds}, revisionsTextTime: {revisionsTextTime.ElapsedMilliseconds}, " +
-                $"progressTime: {progressTime.ElapsedMilliseconds}");
+                $"revisionsReadTime: {revisionsReadTime.ElapsedMilliseconds}, progressTime: {progressTime.ElapsedMilliseconds}");
             */
         }
 
-        private void UpdateProgress(SqlConnection conn)
+        private void InsertUsers(DatabasePump pump, SortedList<long, PageRevision> neededRevisions, SqlConnection conn)
         {
-            bool insertWorked = false;
-            try
-            {
-                // try to insert first
-                using var insertCommand = new SqlCommand(
-                    "WITH X AS (" +
-                    "    SELECT * FROM (VALUES (@RunID, GETUTCDATE(), @FilePosition, @PageID)) AS X(RunID, ReportTime, FilePosition, PageID) " +
-                    ") " +
-                    "INSERT RunProgress (RunID, ReportTime, FilePosition, PageID) " +
-                    "SELECT RunID, ReportTime, FilePosition, PageID " +
-                    "  FROM X " +
-                    " WHERE NOT EXISTS (SELECT RunID FROM RunProgress WHERE RunID = X.RunID)", conn);
-                insertCommand.Parameters.AddWithValue("@RunID", this.runId);
-                insertCommand.Parameters.AddWithValue("@FilePosition", this.filePosition);
-                insertCommand.Parameters.AddWithValue("@PageID", this.pageId);
+            if (neededRevisions.Count == 0)
+                return;
 
-                int rows = insertCommand.ExecuteNonQuery();
-                if (rows > 0)
-                    insertWorked = true;
-            }
-            catch (SqlException sex)
+            // build a list of the users not before inserted
+            List<User> neededUsers = new();
+            foreach (PageRevision pr in neededRevisions.Values)
             {
-                if (sex.Number == 2601 || sex.Number == 2627)
+                if (pr.Contributor == null)
+                    continue;
+
+                if (!pr.Contributor.IsAnonymous)
                 {
-                    // it's a dupe!
-                    insertWorked = false;
-                }
-                else
-                {
-                    // don't know what that was
-                    throw;
+                    if (InsertedUserSet.TryAdd(pr.Contributor.ID, true))
+                    {
+                        neededUsers.Add(pr.Contributor);
+                    }
                 }
             }
 
-            // insert didn't work, so we update
-            if (!insertWorked)
+            if (neededUsers.Count >= 50)
             {
-                // not inserted, so a row exists ... let's update it
-                using var updateCommand = new SqlCommand(
-                    "UPDATE RunProgress " +
-                    "   SET FilePosition = @FilePosition, " +
-                    "       ReportTime = GETUTCDATE(), " +
-                    "       PageID = @PageID" +
-                    " WHERE FilePosition < @FilePosition " +
-                    "   AND RunID = @RunID", conn);
+                BulkInsertUsers(pump, neededUsers, conn);
+            }
+            else if (neededUsers.Count != 0)
+            {
+                // do it directly one by each
+                SqlCommand cmd = new ("INSERT INTO [User] (UserID, UserName) VALUES (@UserID, @UserName)", conn);
 
-                updateCommand.Parameters.AddWithValue("@RunID", this.runId);
-                updateCommand.Parameters.AddWithValue("@FilePosition", this.filePosition);
-                updateCommand.Parameters.AddWithValue("@PageID", this.pageId);
+                foreach (User u in neededUsers)
+                {
+                    cmd.Parameters.Clear();
 
-                updateCommand.ExecuteNonQuery();
+                    cmd.Parameters.AddWithValue("@UserID", u.ID);
+                    cmd.Parameters.AddWithValue("@UserName", u.Name);
+
+                    try
+                    {
+                        this.usersAdded += cmd.ExecuteNonQuery();
+                        InsertedUserSet.TryAdd(u.ID, true);
+                    }
+                    catch (SqlException sex)
+                    {
+                        if (sex.Number == 2627)
+                        {
+                            this.usersAlready += 1;
+                        }
+                        else
+                        {
+                            throw;
+                        }
+                    }
+                }
             }
         }
 
@@ -215,8 +223,11 @@
         /// </summary>
         /// <param name="pump">DatabasePump to record our activity.</param>
         /// <param name="conn">connection to use for insertion.</param>
-        private void BulkInsertUsers(DatabasePump pump, SqlConnection conn)
+        private void BulkInsertUsers(DatabasePump pump, List<User> neededUsers, SqlConnection conn)
         {
+            if (neededUsers.Count == 0)
+                return;
+
             // build a unique temporary table name
             string tempTableName = $"#Users_{System.Environment.MachineName}_{Environment.CurrentManagedThreadId}";
 
@@ -232,7 +243,7 @@
             try
             {
                 // bulk insert into the temporary table
-                UserDataReader udr = new (InsertedUserSet, this.revisions.Values);
+                UserDataReader udr = new (neededUsers);
                 SqlBulkCopy sbc = new (conn);
 
                 bulkActivity = pump.StartActivity("Bulk Insert Users", this.namespaceId, this.pageId, udr.Count);
@@ -451,10 +462,11 @@
             }
         }
 
-        private void SelectAndInsertRevisions(DatabasePump pump, IInsertableProgress progress, IInsertable? previous, SqlConnection conn)
+        private SortedList<long, PageRevision> FindNeededRevisions(DatabasePump pump, IInsertableProgress progress, SqlConnection conn)
         {
             long checkActivityID = pump.StartActivity("Check existing PageRevisions", this.namespaceId, this.pageId, this.revisions.Count);
 
+            state = "read existing revisions";
             // build a hash set of all the known revisions of this page
             Dictionary<long, ExistingPageRevisionInfo> knownRevisions = new ();
 
@@ -480,10 +492,9 @@
 
             foreach ((long revID, var rev) in this.revisions)
             {
-                ExistingPageRevisionInfo? revInfo;
 
                 // do we have it? skip it if we don't already have its text and have it here
-                if (knownRevisions.TryGetValue(revID, out revInfo))
+                if (knownRevisions.TryGetValue(revID, out ExistingPageRevisionInfo? revInfo))
                 {
                     // skip, unless new input has text and we don't already have it
                     if (!(!revInfo.TextAvailable && rev.TextAvailable))
@@ -499,15 +510,15 @@
 
             pump.CompleteActivity(checkActivityID, this.revisions.Count, null);
 
-
-            this.BulkInsertPageRevisions(pump, progress, previous, neededRevisions, conn);
+            return neededRevisions;
         }
 
 
-        private void BulkInsertPageRevisions(DatabasePump pump, IInsertableProgress progress, IInsertable? previous, SortedList<long, PageRevision> neededRevisions, SqlConnection conn)
+        private void BulkInsertPageRevisions(DatabasePump pump, IInsertableProgress progress, SortedList<long, PageRevision> neededRevisions, SqlConnection conn)
         {
             long bulkActivityID = -1;
 
+            state = "insert revisions";
             // now, bulk insert the ones we didn't find
             try
             {
@@ -544,22 +555,6 @@
                     progress.CompleteRevisions(neededRevisions.Count);
                     this.revsAdded += neededRevisions.Count;
                 }
-
-                // wait until the previous revision is done, if we've got one
-                if (previous != null)
-                {
-                    // Console.WriteLine($"[[{(this as IInsertable).ObjectName}]] waiting on [[{previous.ObjectName}]]");
-
-                    ManualResetEvent mre = previous.CompletedEvent;
-                    while (!mre.WaitOne(100))
-                    {
-                        Console.WriteLine($"[[{(this as IInsertable).ObjectName}]] is waiting on [[{previous.ObjectName}]]");
-                    }
-                }
-                else
-                {
-                    // Console.WriteLine($"[[{(this as IInsertable).ObjectName}]] not waiting, no previous");
-                }
             }
             catch (Exception ex)
             {
@@ -571,9 +566,6 @@
             }
             finally
             {
-                // signal the next in the chain of waiters
-                this.completeEvent.Set();
-
                 if (bulkActivityID != -1)
                 {
                     pump.CompleteActivity(bulkActivityID, neededRevisions.Count, null);
@@ -581,7 +573,7 @@
             }
         }
 
-        private void BulkMergeRevisions(DatabasePump pump, IInsertableProgress progress, IInsertable? previous, SqlConnection conn)
+        private void BulkMergeRevisions(DatabasePump pump, IInsertableProgress progress, SqlConnection conn)
         {
             // build a unique temporary table name
             string tempTableName = $"#Revisions_{System.Environment.MachineName}_{Environment.CurrentManagedThreadId}";
@@ -635,13 +627,6 @@
 
                 pump.CompleteActivity(bulkActivityID, null, null);
                 bulkActivityID = -1;
-
-                // wait until the previous revision is done, if we've got one
-                if (previous != null)
-                {
-                    ManualResetEvent mre = previous.CompletedEvent;
-                    mre.WaitOne();
-                }
 
                 // merge up!
                 SqlException? mergeException = null;
@@ -723,9 +708,6 @@
                 // drop the temporary table
                 using var tableDrop = new SqlCommand($"DROP TABLE [{tempTableName}];", conn);
                 tableDrop.ExecuteNonQuery();
-
-                // signal the next in the chain of waiters
-                this.completeEvent.Set();
             }
         }
 
@@ -740,6 +722,7 @@
         private void InsertPage(DatabasePump pump, IInsertableProgress progress, SqlConnection conn)
         {
             long activityID = pump.StartActivity("Insert Page", this.namespaceId, this.pageId, 1);
+            state = "reading pages";
 
             using var cmdSelect = new SqlCommand("SELECT PageID, NamespaceID FROM [Page] WHERE PageID = @PageID", conn);
             cmdSelect.Parameters.AddWithValue("@PageID", this.pageId);
@@ -765,6 +748,7 @@
                 }
             }
 
+            state = "inserting page";
             Exception? exResult = null;
             int inserted = 0;
             try
@@ -831,7 +815,17 @@
         /// </summary>
         string IInsertable.ObjectName
         {
-            get { return $"Page Inserter ({this.pageName})"; }
+            get { return "Page Inserter"; }
+        }
+
+        string IInsertable.ObjectTarget
+        {
+            get { return this.pageName; }
+        }
+
+        string IInsertable.ObjectState
+        {
+            get { return state; }
         }
 
         /// <summary>

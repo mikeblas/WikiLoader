@@ -31,15 +31,20 @@
         // number of work items queued
         private long queuedWorkItemCount = 0;
 
+        // number of revisions queued
+        private long queuedRevisions = 0;
+
         /// <summary>
         /// implementation of IInsertableProgress.
         /// </summary>
-        private int pendingRevisions = 0;
+        private long pendingRevisions = 0;
         private int insertedPages = 0;
         private int insertedUsers = 0;
         private int insertedRevisions = 0;
 
         private long runID;
+
+        private long? lastPosition = null;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="DatabasePump"/> class.
@@ -61,17 +66,15 @@
         private class WorkItemInfo : IDisposable, IWorkItemDescription
         {
             private IInsertable insertable;
-            private IInsertable? previous;
             private SqlConnection? conn;
             private IInsertableProgress progress;
             private DatabasePump pump;
             private IXmlDumpParserProgress parserProgress;
 
-            public WorkItemInfo(DatabasePump pump, IInsertable i, IInsertable? previous, IInsertableProgress progress, IXmlDumpParserProgress parserProgress)
+            public WorkItemInfo(DatabasePump pump, IInsertable i, IInsertableProgress progress, IXmlDumpParserProgress parserProgress)
             {
                 this.pump = pump;
                 this.insertable = i;
-                this.previous = previous;
                 this.progress = progress;
                 this.parserProgress = parserProgress;
             }
@@ -92,7 +95,7 @@
                 if (conn == null)
                     throw new InvalidOperationException("Can't insert without a connection");
 
-                insertable.Insert(this.previous, this.pump, this.conn, this.progress, this.parserProgress);
+                insertable.Insert(this.pump, this.conn, this.progress, this.parserProgress);
             }
 
             internal bool BuildConnection()
@@ -100,7 +103,8 @@
                 Stopwatch connectionTime = Stopwatch.StartNew();
 
                 // get a new connection; use an ApplicationName parameter to indicate who we are
-                string totalConnectionString = $"{ConnectionString};Application Name=WikiLoader{Environment.CurrentManagedThreadId};";
+                // string totalConnectionString = $"{ConnectionString};Application Name=WikiLoader{Environment.CurrentManagedThreadId};";
+                string totalConnectionString = $"{ConnectionString};Max Pool Size=200;";
 
                 this.conn = null;
                 try
@@ -132,7 +136,7 @@
                         }
 
                         // don't know that exception yet, just rethrow
-                        throw sex;
+                        throw;
                     }
                 }
 
@@ -146,6 +150,11 @@
                 get { return this.insertable.ObjectName; }
             }
 
+            public string ObjectTarget
+            {
+                get { return this.insertable.ObjectTarget; }
+            }
+
             public int RevisionCount
             {
                 get { return this.insertable.RevisionCount; }
@@ -154,6 +163,10 @@
             public int RemainingRevisionCount
             {
                 get { return this.insertable.RemainingRevisionCount; }
+            }
+            public string ObjectState
+            {
+                get { return this.insertable.ObjectState; }
             }
         }
 
@@ -291,6 +304,74 @@
             updateRun.ExecuteNonQuery();
         }
 
+
+        public void UpdateRunProgress(SqlConnection conn, long filePosition, long pageId)
+        {
+            //TODO: progress might not be reported in order, so we should chain down the work items
+            // and resolve them in blocks, recording the highest *continuous* completed, not just
+            // the highest completed
+
+            // skip if not forward progress
+            if (this.lastPosition != null && this.lastPosition >= filePosition)
+                return;
+
+            this.lastPosition = filePosition;
+
+            bool insertWorked = false;
+            try
+            {
+                // try to insert first
+                using var insertCommand = new SqlCommand(
+                    "WITH X AS (" +
+                    "    SELECT * FROM (VALUES (@RunID, GETUTCDATE(), @FilePosition, @PageID)) AS X(RunID, ReportTime, FilePosition, PageID) " +
+                    ") " +
+                    "INSERT RunProgress (RunID, ReportTime, FilePosition, PageID) " +
+                    "SELECT RunID, ReportTime, FilePosition, PageID " +
+                    "  FROM X " +
+                    " WHERE NOT EXISTS (SELECT RunID FROM RunProgress WHERE RunID = X.RunID)", conn);
+                insertCommand.Parameters.AddWithValue("@RunID", this.RunID);
+                insertCommand.Parameters.AddWithValue("@FilePosition", filePosition);
+                insertCommand.Parameters.AddWithValue("@PageID", pageId);
+
+                int rows = insertCommand.ExecuteNonQuery();
+                if (rows > 0)
+                    insertWorked = true;
+            }
+            catch (SqlException sex)
+            {
+                if (sex.Number == 2601 || sex.Number == 2627)
+                {
+                    // it's a dupe!
+                    insertWorked = false;
+                }
+                else
+                {
+                    // don't know what that was
+                    throw;
+                }
+            }
+
+            // insert didn't work, so we update
+            if (!insertWorked)
+            {
+                // not inserted, so a row exists ... let's update it
+                using var updateCommand = new SqlCommand(
+                    "UPDATE RunProgress " +
+                    "   SET FilePosition = @FilePosition, " +
+                    "       ReportTime = GETUTCDATE(), " +
+                    "       PageID = @PageID" +
+                    " WHERE FilePosition < @FilePosition " +
+                    "   AND RunID = @RunID", conn);
+
+                updateCommand.Parameters.AddWithValue("@RunID", this.runID);
+                updateCommand.Parameters.AddWithValue("@FilePosition", filePosition);
+                updateCommand.Parameters.AddWithValue("@PageID", pageId);
+
+                updateCommand.ExecuteNonQuery();
+            }
+
+        }
+
         public long StartActivity(string activityName, int? namespaceID, long? pageID, long? workCount)
         {
             return -1;
@@ -360,19 +441,17 @@
         /// Add an Insertable that is ready to go to the database.
         /// </summary>
         /// <param name="i">reference to an object implementing IInsertable; we'll enqueue it and add it when we have threads.</param>
-        /// <param name="previous">reference to an object using IInsertable for the previously executed item.</param>
         /// <param name="parserProgress">IXmlDumpParserProgress that receives notifications of parsing progress.</param>
-        /// <returns>a tuple with the number of running, queued, and pending revisions.</returns>
-        public (long running, long queued, long pendingRevisions) Enqueue(IInsertable i, IInsertable? previous, IXmlDumpParserProgress parserProgress)
+        public void Enqueue(IInsertable i, IXmlDumpParserProgress parserProgress)
         {
             // back pressure
             int pauses = 0;
-            while (Interlocked.Read(ref runningWorkItemCount) >= 32 && Interlocked.Read(ref queuedWorkItemCount) >= 640)
+            while (Interlocked.Read(ref runningWorkItemCount) >= 24 && (Interlocked.Read(ref queuedWorkItemCount) >= 10000 || Interlocked.Read(ref pendingRevisions) >= 2_000_000))
             {
                 // report every 50 pauses == 5 seconds
                 if (pauses++ % 50 == 0)
                 {
-                    parserProgress.BackPressurePulse(Interlocked.Read(ref runningWorkItemCount), Interlocked.Read(ref queuedWorkItemCount), this.pendingRevisions, this.runningSet);
+                    parserProgress.BackPressurePulse(Interlocked.Read(ref runningWorkItemCount), Interlocked.Read(ref queuedWorkItemCount), Interlocked.Read(ref this.pendingRevisions), Interlocked.Read(ref this.queuedRevisions), this.runningSet);
                 }
 
                 Thread.Sleep(100);  // 100 milliseconds
@@ -380,17 +459,12 @@
 
             // create a WorkItemInfo instance with the Insertable and our connection
             // disposable connection object is now owned by WorkItemInfo object
-            WorkItemInfo ci = new (this, i, previous, this, parserProgress);
+            WorkItemInfo ci = new (this, i, this, parserProgress);
 
             // queue it up!
             Interlocked.Increment(ref queuedWorkItemCount);
-            ThreadPool.SetMaxThreads(32, 1);
+            Interlocked.Add(ref queuedRevisions, i.RevisionCount);
             ThreadPool.QueueUserWorkItem(new WaitCallback(this.WorkCallback), ci);
-
-            // return our current running count. This might
-            // not have incremented just yet, but this is a convenient
-            // time to help show status
-            return (runningWorkItemCount, queuedWorkItemCount, this.pendingRevisions);
         }
 
         /// <summary>
@@ -408,6 +482,7 @@
 
             // remove from the queued count
             Interlocked.Decrement(ref queuedWorkItemCount);
+            Interlocked.Add(ref queuedRevisions, -wii.RevisionCount);
 
             // add to the running count
             Interlocked.Increment(ref runningWorkItemCount);
@@ -436,7 +511,7 @@
             while (runningWorkItemCount > 0)
             {
                 Console.ForegroundColor = ConsoleColor.Red;
-                Console.Write($"{runningWorkItemCount} work items running, {queuedWorkItemCount} work items queued, {this.pendingRevisions} pending revisions");
+                Console.Write($"{runningWorkItemCount} work items running, {queuedWorkItemCount} work items queued, {this.queuedRevisions} queued revisions, {this.pendingRevisions} pending revisions");
                 Console.ResetColor();
                 Console.WriteLine();
                 Thread.Sleep(2500);

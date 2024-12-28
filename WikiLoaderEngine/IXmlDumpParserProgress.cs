@@ -27,6 +27,6 @@
         /// <param name="running">Number of threads running against the database.</param>
         /// <param name="queued">Number of work items queued to run.</param>
         /// <param name="pendingRevisions">Total number of pending page revisions among all queued work.</param>
-        public void BackPressurePulse(long running, long queued, int pendingRevisions, IDictionary<IWorkItemDescription, bool> runningSet);
+        public void BackPressurePulse(long running, long queued, long pendingRevisions, long queuedRevisions, IDictionary<IWorkItemDescription, bool> runningSet);
     }
 }

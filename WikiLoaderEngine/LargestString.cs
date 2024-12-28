@@ -11,9 +11,9 @@
     /// </summary>
     internal class LargestString
     {
+        private readonly string name;
         private string? current;
         private string? largest;
-        private readonly string name;
 
         public LargestString(string name)
         {

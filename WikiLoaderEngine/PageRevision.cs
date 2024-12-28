@@ -101,7 +101,7 @@
         {
             get
             {
-                return (this.text != null);
+                return this.text != null;
             }
         }
 

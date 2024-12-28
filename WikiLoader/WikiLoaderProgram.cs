@@ -6,6 +6,7 @@ namespace WikiLoader
     using System.Collections.Generic;
     using System.IO;
     using System.Text;
+    using System.Threading;
     using WikiLoaderEngine;
 
     internal class WikiLoaderProgram : IXmlDumpParserProgress
@@ -62,12 +63,13 @@ namespace WikiLoader
             {
                 if (revisionsAdded != 0 || usersAdded != 0)
                 {
-                    Console.WriteLine(
+                    if (this.noUpdatePagesCount > 0)
+                        Console.WriteLine($"{this.noUpdatePagesCount} pages with no updates");
+                    Console.Write(
                         $"[[{pageName}]]\n" +
                         $"   {revisionsAdded} revisions added, {revisionsExist} revisions exist\n" +
                         $"   {usersAdded} users added, {usersExist} users exist\n" +
-                        $"   {timeMilliseconds} milliseconds\n" +
-                        $"   {this.noUpdatePagesCount} pages with no updates");
+                        $"   {timeMilliseconds} milliseconds\n");
                     this.noUpdatePagesCount = 0;
                 }
                 else
@@ -77,9 +79,9 @@ namespace WikiLoader
             }
         }
 
-        public void BackPressurePulse(long running, long queued, int pendingRevisions, IDictionary<IWorkItemDescription, bool> runningSet)
+        public void BackPressurePulse(long running, long queued, long pendingRevisions, long queuedRevisions, IDictionary<IWorkItemDescription, bool> runningSet)
         {
-            StringBuilder builder = new ($"Back pressure: {running} running, {queued} queued, {pendingRevisions} pending revisions");
+            StringBuilder builder = new ($"Back pressure: {running} running, {queued} queued items, {queuedRevisions} queued revisions, {pendingRevisions} pending revisions");
             if (previousPendingRevisionCount != -1)
             {
                 long delta = pendingRevisions - this.previousPendingRevisionCount;
@@ -88,13 +90,15 @@ namespace WikiLoader
 
             builder.Append(Environment.NewLine);
 
+            /*
             lock (runningSet)
             {
                 foreach (var wii in runningSet.Keys)
                 {
-                    builder.Append($"   {wii.ObjectName}, {wii.RemainingRevisionCount} revisions remaining of {wii.RevisionCount}\n");
+                    builder.Append($"   {wii.ObjectName} ({wii.ObjectState}): [[{wii.ObjectTarget}]] : {wii.RemainingRevisionCount} revisions remaining of {wii.RevisionCount}\n");
                 }
             }
+            */
 
             lock (this)
             {
@@ -108,7 +112,7 @@ namespace WikiLoader
 
         private static void Main(string[] args)
         {
-            string fileName = @"v:\wiki\202411\history\uncompressed\enwiki-20241101-stub-meta-history25.xml";
+            string fileName = @"v:\wiki\202411\history\uncompressed\enwiki-20241101-stub-meta-history27.xml";
             // string fileName = @"f:\wiki\20240701\history\unzipped\enwiki-20240701-stub-meta-history27.xml";
             // string fileName = @"f:\wiki\20240701\current\unzipped\enwiki-20240701-pages-meta-current2.xml-p41243p151573";
             if (args.Length >= 1)
@@ -117,8 +121,21 @@ namespace WikiLoader
             p.Run(fileName);
         }
 
+        internal void SetupThreadPool()
+        {
+            int workerThreads, completionPortThreads;
+            ThreadPool.GetMaxThreads(out workerThreads, out completionPortThreads);
+            Console.WriteLine($"Thread pool initially had {workerThreads} worker threads and {completionPortThreads} completion port threads");
+            // ThreadPool.SetMaxThreads(32, 1);
+            Console.WriteLine("No change was made");
+            // ThreadPool.GetMaxThreads(out workerThreads, out completionPortThreads);
+            // Console.WriteLine($"Thread pool now has {workerThreads} worker threads and {completionPortThreads} completion port threads");
+        }
+
         private void Run(string fileName)
         {
+            SetupThreadPool();
+
             string strResult = "Unknown exception!";
             try
             {

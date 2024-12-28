@@ -1,11 +1,20 @@
 ﻿namespace WikiLoaderEngine
 {
     using System.Data.SqlClient;
-    using System.Threading;
 
     public interface IInsertable
     {
         string ObjectName
+        {
+            get;
+        }
+
+        string ObjectState
+        {
+            get;
+        }
+
+        string ObjectTarget
         {
             get;
         }
@@ -20,11 +29,6 @@
             get;
         }
 
-        ManualResetEvent CompletedEvent
-        {
-            get;
-        }
-
-        void Insert(IInsertable? previous, DatabasePump pump, SqlConnection conn, IInsertableProgress progress, IXmlDumpParserProgress parserProgress);
+        void Insert(DatabasePump pump, SqlConnection conn, IInsertableProgress progress, IXmlDumpParserProgress parserProgress);
     }
 }

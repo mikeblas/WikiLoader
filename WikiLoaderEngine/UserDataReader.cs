@@ -18,7 +18,7 @@
         /// <summary>
         /// Initializes a new instance of the <see cref="UserDataReader"/> class.
         ///
-        /// This instance will reference the InsertedUserSet to track which users have already been
+        /// This constructor will use the provided InsertedUserSet to track which users have already been
         /// inserted. It will build a set of users not yet inserted for itself from the passed list,
         /// and set itself up to supply those users from its IDataReader interface.
         /// </summary>
@@ -41,49 +41,22 @@
             }
         }
 
-        /*
-        public UserDataReader(HashSet<long> insertedUserSet, IEnumerable<PageRevision> pages)
+        /// <summary>
+        /// Initializes a new instance of the <see cref="UserDataReader"/> class.
+        /// 
+        /// This constructor directly uses the given list of users; it attempts to insert them without any
+        /// tests to see if they've been previously inserted or processed.
+        /// </summary>
+        /// <param name="users">User objects to be inserted.</param>
+        public UserDataReader(IEnumerable<User> users)
         {
-            long lastUserID = -1;
-            foreach (PageRevision pr in pages)
-            {
-                lock (insertedUserSet)
-                {
-                    if (lastUserID != -1)
-                        insertedUserSet.Add(lastUserID);
-
-                    lastUserID = -1;
-
-                    // if the contributor was deleted, skip it
-                    if (pr.Contributor == null)
-                        continue;
-
-                    // if we're not anonymous and we've already seen this ID, then skip
-                    if (!pr.Contributor.IsAnonymous && insertedUserSet.Contains(pr.Contributor.ID))
-                        continue;
-                }
-
-                // if we're not anonymous, add this user to our list
-                if (!pr.Contributor.IsAnonymous)
-                {
-                    this.contributors.Add(pr.Contributor);
-                    lastUserID = pr.Contributor.ID;
-                }
-            }
-
-            if (lastUserID != -1)
-            {
-                lock (insertedUserSet)
-                {
-                    insertedUserSet.Add(lastUserID);
-                }
-            }
+            contributors.AddRange(users);
         }
-        */
 
-            /// <summary>
-            /// Gets the count of users to actually be inserted by this object.
-            /// </summary>
+
+        /// <summary>
+        /// Gets the count of users to actually be inserted by this object.
+        /// </summary>
         public int Count
         {
             get { return this.contributors.Count; }

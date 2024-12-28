@@ -7,7 +7,7 @@
 
     /// <summary>
     /// NamespaceInfos contains a collection of Namespace objects,
-    /// and implements the Insertable interface so the listcan be pushed
+    /// and implements the Insertable interface so the list can be pushed
     /// to the database.
     ///
     /// Note that the class has a few members (counts, particularly) that
@@ -21,7 +21,7 @@
         /// </summary>
         private readonly Dictionary<int, NamespaceInfo> namespaceMap;
 
-        private readonly ManualResetEvent completeEvent = new (false);
+        private string state = "idle";
 
         /// <summary>
         /// Initializes a new instance of the <see cref="NamespaceInfos"/> class.
@@ -47,10 +47,6 @@
             get { return this.namespaceMap.Values; }
         }
 
-        public ManualResetEvent CompletedEvent
-        {
-            get { return this.completeEvent; }
-        }
 
         /// <summary>
         /// Find a NamespaceInfo object given the ID key.
@@ -76,17 +72,18 @@
         /// Insertable implementation: Insert method.
         /// Takes a SqlConnection and inserts the collection into it.
         /// </summary>
-        /// <param name="previous">previosly run IInsertable object that must complete before this work is attempted.</param>
         /// <param name="pump">DatabasePump that will receive objects to be inserted.</param>
         /// <param name="conn">SqlConnection to write into.</param>
-        /// <param name="progress">IInsertableProgress that will receive notifications of pasring progress.</param>
+        /// <param name="progress">IInsertableProgress that will receive notifications of parsing progress.</param>
         /// <param name="parserProgress">IXmlDumpParserProgress which will receive notifications of progress.</param>
-        public void Insert(IInsertable? previous, DatabasePump pump, SqlConnection conn, IInsertableProgress progress, IXmlDumpParserProgress parserProgress)
+        public void Insert(DatabasePump pump, SqlConnection conn, IInsertableProgress progress, IXmlDumpParserProgress parserProgress)
         {
             // count of rows actually inserted
             int inserts = 0;
-            // count of rows we didn't insert becuase they were dupes
+            // count of rows we didn't insert because they were dupes
             int already = 0;
+
+            this.state = "Inserting";
 
             long activityID = pump.StartActivity("Insert Namespaces", null, null, this.namespaceMap.Count);
 
@@ -118,7 +115,7 @@
                     else
                     {
                         // otherwise, something else went wrong
-                        throw sex;
+                        throw;
                     }
                 }
             }
@@ -128,12 +125,22 @@
             pump.CompleteActivity(activityID, inserts, null);
 
             // signal the next in the chain of waiters
-            this.completeEvent.Set();
+            this.state = "completed";
         }
 
         string IInsertable.ObjectName
         {
             get { return "Namespaces Inserter"; }
+        }
+
+        string IInsertable.ObjectTarget
+        {
+            get { return "Namespaces list";  }
+        }
+
+        string IInsertable.ObjectState
+        {
+            get { return state; }
         }
 
         int IInsertable.RevisionCount
